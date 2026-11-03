@@ -1,0 +1,52 @@
+name: pr-issue
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-issue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Для PR в dev нужна закрывающая ссылка (Closes/Fixes/Resolves), для
+      # остальных веток достаточно и Refs. Другие статусы (check) сюда не входят.
+      - name: Проверка ссылки на issue в описании PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BODY: ${{ github.event.pull_request.body }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$BASE" = "dev" ]; then
+            pattern='(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]+#[0-9]+'
+            hint="PR в dev должен закрывать issue: добавьте в описание 'Closes #12'."
+          else
+            pattern='(close[sd]?|fix(e[sd])?|resolve[sd]?|refs?)[[:space:]]*:?[[:space:]]+#[0-9]+'
+            hint="В описании PR нет ссылки на issue: добавьте 'Closes #12' или 'Refs #12'."
+          fi
+          ref=$(printf '%s' "$BODY" | grep -Eoi "$pattern" | head -n1 || true)
+          if [ -z "$ref" ]; then
+            echo "::error::$hint"
+            exit 1
+          fi
+          number=${ref##*#}
+          if ! kind=$(gh api "repos/$REPO/issues/$number" --jq 'if .pull_request then "pr" else "issue" end' 2>/dev/null); then
+            echo "::error::Issue #$number не найден в $REPO."
+            exit 1
+          fi
+          if [ "$kind" != "issue" ]; then
+            echo "::error::#$number — это pull request, а не issue."
+            exit 1
+          fi
+          echo "PR связан с issue #$number."
