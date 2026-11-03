@@ -1,0 +1,43 @@
+name: issue-close
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  issue-close:
+    if: github.event.pull_request.merged == true
+    permissions:
+      issues: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # GitHub сам закрывает issue по ключевым словам только при мерже в ветку
+      # по умолчанию (main), а PR идут в dev — закрываем issue здесь.
+      - name: Закрыть issue из описания смерженного PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          numbers=$(printf '%s' "$BODY" | grep -Eoi '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]+#[0-9]+' | grep -Eo '[0-9]+' | sort -u || true)
+          if [ -z "$numbers" ]; then
+            echo "В описании PR нет закрывающей ссылки — закрывать нечего."
+            exit 0
+          fi
+          for number in $numbers; do
+            kind=$(gh api "repos/$REPO/issues/$number" --jq 'if .pull_request then "pr" else "issue" end' 2>/dev/null || true)
+            if [ "$kind" != "issue" ]; then
+              echo "#$number недоступен или является pull request — пропускаю."
+              continue
+            fi
+            gh api -X PATCH "repos/$REPO/issues/$number" -f state=closed >/dev/null
+            echo "Issue #$number закрыт."
+          done

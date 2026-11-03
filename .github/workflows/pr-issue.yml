@@ -18,18 +18,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # Ссылка на issue задаётся в описании PR: "Closes #12" или "Refs #12".
-      # Другие статусы (check) к этому workflow не относятся.
+      # Для PR в dev нужна закрывающая ссылка (Closes/Fixes/Resolves), для
+      # остальных веток достаточно и Refs. Другие статусы (check) сюда не входят.
       - name: Проверка ссылки на issue в описании PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           BODY: ${{ github.event.pull_request.body }}
+          BASE: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
-          ref=$(printf '%s' "$BODY" | grep -Eoi '(closes|fixes|resolves|refs)[[:space:]]+#[0-9]+' | head -n1 || true)
+          if [ "$BASE" = "dev" ]; then
+            pattern='(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]+#[0-9]+'
+            hint="PR в dev должен закрывать issue: добавьте в описание 'Closes #12'."
+          else
+            pattern='(close[sd]?|fix(e[sd])?|resolve[sd]?|refs?)[[:space:]]*:?[[:space:]]+#[0-9]+'
+            hint="В описании PR нет ссылки на issue: добавьте 'Closes #12' или 'Refs #12'."
+          fi
+          ref=$(printf '%s' "$BODY" | grep -Eoi "$pattern" | head -n1 || true)
           if [ -z "$ref" ]; then
-            echo "::error::В описании PR нет ссылки на issue. Добавьте строку вида 'Closes #12' или 'Refs #12'."
+            echo "::error::$hint"
             exit 1
           fi
           number=${ref##*#}
