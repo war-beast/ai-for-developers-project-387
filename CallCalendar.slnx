@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/backend/">
+    <Project Path="backend/CallCalendar.BLL/CallCalendar.BLL.csproj" />
+    <Project Path="backend/CallCalendar.DAL/CallCalendar.DAL.csproj" />
+    <Project Path="backend/CallCalendar.Tests/CallCalendar.Tests.csproj" />
+    <Project Path="backend/CallCalendar/CallCalendar.csproj" />
+  </Folder>
+</Solution>
