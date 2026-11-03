@@ -1,0 +1,44 @@
+name: pr-issue
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-issue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Ссылка на issue задаётся в описании PR: "Closes #12" или "Refs #12".
+      # Другие статусы (check) к этому workflow не относятся.
+      - name: Проверка ссылки на issue в описании PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          ref=$(printf '%s' "$BODY" | grep -Eoi '(closes|fixes|resolves|refs)[[:space:]]+#[0-9]+' | head -n1 || true)
+          if [ -z "$ref" ]; then
+            echo "::error::В описании PR нет ссылки на issue. Добавьте строку вида 'Closes #12' или 'Refs #12'."
+            exit 1
+          fi
+          number=${ref##*#}
+          if ! kind=$(gh api "repos/$REPO/issues/$number" --jq 'if .pull_request then "pr" else "issue" end' 2>/dev/null); then
+            echo "::error::Issue #$number не найден в $REPO."
+            exit 1
+          fi
+          if [ "$kind" != "issue" ]; then
+            echo "::error::#$number — это pull request, а не issue."
+            exit 1
+          fi
+          echo "PR связан с issue #$number."
