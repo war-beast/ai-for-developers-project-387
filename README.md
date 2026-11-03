@@ -2,6 +2,7 @@
 
 
 [![hexlet-check](https://github.com/war-beast/ai-for-developers-project-387/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/war-beast/ai-for-developers-project-387/actions)
+[![check](https://github.com/war-beast/ai-for-developers-project-387/actions/workflows/check.yml/badge.svg)](https://github.com/war-beast/ai-for-developers-project-387/actions/workflows/check.yml)
 
 Сервис записи на звонок: владелец публикует доступное время, а гость без
 регистрации выбирает тип встречи и свободный слот в ближайшие 14 дней.
@@ -62,7 +63,7 @@ mise run openapi   # TypeSpec -> openapi.yaml
 mise run sdk       # openapi.yaml -> frontend/src/api/schema.d.ts
 ```
 
-Полный прогон проверок: сборка, линтеры, типы, тесты
+Полный прогон проверок (его же делает CI): сборка, линтеры, типы, тесты
 бекенда и фронтенда, проверка актуальности сгенерированных контракта и SDK,
 дымовая проверка API и браузерный сценарий Playwright на реальных серверах:
 
@@ -101,6 +102,11 @@ docker run --rm -e PORT=8080 -p 8080:8080 callcalendar
 4. Открыть https://callcalendar-615k.onrender.com/health — должно вернуться `ok`.
 
 Работающий сервис: https://callcalendar-615k.onrender.com.
+
+После мержа PR в `dev` деплой запускает workflow
+`.github/workflows/render-deploy.yml`: он переключает ветку сервиса на `dev` и
+через Render API запускает сборку образа. Для этого в секретах репозитория
+должен быть `RENDER_API_KEY` (Settings → Secrets and variables → Actions).
 
 ### MCP-сервер Render
 
