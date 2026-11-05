@@ -77,6 +77,41 @@ mise run check
 mise run e2e
 ```
 
+## OpenCode в GitHub
+
+Воркфлоу `.github/workflows/opencode.yml` запускает агента OpenCode по
+командам в комментариях issues и pull request: он отвечает на вопросы,
+делает резюме треда, может исправить код и открыть PR.
+
+- **Событие**: `issue_comment` и `pull_request_review_comment`, только
+  `types: [created]`. Прогон виден в Actions, ответ агент публикует
+  комментарием в том же issue / PR; если менял код — ветка `opencode/issue*`
+  с PR в `dev`.
+- **Команды** (mentions заданы явно в экшене): `/opencode` и `/oc`. Текст
+  после команды — задание агенту, например
+  `/oc найди, почему бронирование бросает 409 в POST /api/bookings`.
+  Комментарий из одной команды (`/oc`) — резюме треда.
+  В комментарии к коду в Files-табе PR агент дополнительно получает файл и
+  строки ревью.
+- **Модель**: `opencode/glm-5.3-flash-free` (провайдер `opencode`),
+  ключ — `OPENCODE_API_KEY` в GitHub Secrets (Settings → Secrets and
+  variables → Actions).
+- **Права запуска**: только доверенные участники (автор комментария —
+  OWNER/MEMBER/COLLABORATOR); команды ботов и комментарии на PR из
+  недоверенных fork игнорируются — fork-код не выполняется с секретом.
+- **Ограничения**: один прогон на issue/PR (concurrency), тайм-аут задания
+  30 минут.
+- **Авторизация**: стандартный режим — OIDC-обмен на токен GitHub App,
+  нужен установленный [github.com/apps/opencode-agent](https://github.com/apps/opencode-agent);
+  права джобы: `contents: read`, `pull-requests: read`, `issues: read`,
+  `id-token: write`. Checkout без сохранения кредов (`persist-credentials: false`).
+- **Решение по share**: сессии не публикуются — в апстриме фичу отключили,
+  с экшена v1.19.5 input `share` deprecated и игнорируется.
+
+Проверить работу: написать в существующем issue комментарий `/oc check` —
+агент поставит реакцию 👀 на команду, ответит комментарием, а прогон
+появится в Actions (workflow «opencode»).
+
 ## Деплой
 
 ### Docker
