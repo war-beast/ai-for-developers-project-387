@@ -31,7 +31,7 @@ test('владелец видит забронированную встречу 
       start,
       guestName: 'Гость списка',
       guestEmail: email,
-      comment: 'Из теста списка',
+      topic: 'Из теста списка',
     },
   })
   expect(booking.ok()).toBeTruthy()
@@ -45,6 +45,6 @@ test('владелец видит забронированную встречу 
   await expect(row).toBeVisible()
   await expect(row).toContainText('Список встреч')
   await expect(row).toContainText('Гость списка')
-  await expect(row).toContainText('Из теста списка')
+  await expect(row).toContainText('Тема разговора: Из теста списка')
   await expect(row).toContainText(/\d{2}:\d{2}/)
 })

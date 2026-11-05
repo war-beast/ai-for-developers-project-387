@@ -176,12 +176,17 @@ describe('EventTypePage', () => {
       end: slot.end,
       guestName: 'Гость',
       guestEmail: 'guest@example.com',
+      topic: 'Перезвоните',
       createdAt: '2026-10-27T10:00:00+00:00',
     })
 
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: '09:00' }))
+
+    const topic = screen.getByLabelText('Тема разговора') as HTMLInputElement
+    expect(topic.value).toBe('Пожаловаться на трудную судьбу')
+    fireEvent.change(topic, { target: { value: 'Перезвоните' } })
     fireEvent.change(screen.getByLabelText('Имя'), { target: { value: 'Гость' } })
     fireEvent.change(screen.getByLabelText('Email'), {
       target: { value: 'guest@example.com' },
@@ -189,9 +194,13 @@ describe('EventTypePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Забронировать' }))
 
     expect(await screen.findByText('Вы записаны')).toBeTruthy()
+    expect(createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({ topic: 'Перезвоните' }),
+    )
     expect(screen.getByText(/Знакомство/)).toBeTruthy()
     expect(screen.getByText(/28 окт, 09:00/)).toBeTruthy()
     expect(screen.getByText(/guest@example.com/)).toBeTruthy()
+    expect(screen.getByText(/Тема разговора: Перезвоните/)).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Записаться ещё' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'На главную' })).toBeTruthy()
   })

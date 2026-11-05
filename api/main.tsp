@@ -50,6 +50,8 @@ model CreateBookingRequest {
   start: offsetDateTime;
   guestName: string;
   guestEmail: string;
+  /** Тема разговора, обязательна; не длиннее 250 символов вместе с пробельными. */
+  topic: string;
   comment?: string;
 }
 
@@ -62,6 +64,8 @@ model Booking {
   end: offsetDateTime;
   guestName: string;
   guestEmail: string;
+  /** Тема разговора; в старых записях — значение по умолчанию. */
+  topic: string;
   comment?: string;
   createdAt: utcDateTime;
 }
