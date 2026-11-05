@@ -68,11 +68,15 @@ start=$(curl -fsS "${URL}/api/event-types/${slug}/slots" \
   | grep -o '"start":"[^"]*"' | sed -n '1p' | cut -d'"' -f4)
 [ -n "${start}" ] || fail "slots response has no free slots"
 
-booking="{\"eventTypeId\":\"${slug}\",\"start\":\"${start}\",\"guestName\":\"Smoke\",\"guestEmail\":\"smoke@example.com\"}"
+booking="{\"eventTypeId\":\"${slug}\",\"start\":\"${start}\",\"guestName\":\"Smoke\",\"guestEmail\":\"smoke@example.com\",\"topic\":\"Проверка\"}"
 
 expect_status 201 "POST /api/bookings" POST /api/bookings "${booking}"
 expect_status 409 "duplicate POST /api/bookings" POST /api/bookings "${booking}"
 expect_status 200 "GET /api/bookings" GET /api/bookings
+expect_status 400 \
+  "booking without topic" \
+  POST /api/bookings \
+  "{\"eventTypeId\":\"${slug}\",\"start\":\"${start}\",\"guestName\":\"Smoke\",\"guestEmail\":\"smoke@example.com\"}"
 
 curl -fsS "${URL}/api/bookings" | grep "\"start\":\"${start}\"" > /dev/null \
   || fail "created booking is missing from GET /api/bookings"
@@ -85,7 +89,7 @@ expect_status 400 \
 expect_status 404 \
   "unknown type booking" \
   POST /api/bookings \
-  "{\"eventTypeId\":\"missing\",\"start\":\"${start}\",\"guestName\":\"Smoke\",\"guestEmail\":\"smoke@example.com\"}"
+  "{\"eventTypeId\":\"missing\",\"start\":\"${start}\",\"guestName\":\"Smoke\",\"guestEmail\":\"smoke@example.com\",\"topic\":\"Проверка\"}"
 
 expect_status 400 \
   "malformed POST /api/bookings" \
