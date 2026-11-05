@@ -1,0 +1,77 @@
+name: opencode
+
+on:
+  # Триггеры issue_comment и pull_request_review_comment доступны любому
+  # комментатору, поэтому в if: ниже сначала отсекаем ботов и недоверенных
+  # участникам; право write у актора дополнительно проверяет сам экшен -
+  # недоверенные fork отсекаются ниже, в fork_guard. Остаточный риск от триггера с id-token
+  # и секретом принимаем осознанно.
+  # jactionlint ignore=dangerous-triggers
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+# Без cancel-in-progress: отмена посреди ответа агента оставит его
+# недописанным. У issue_comment номер в issue.number, у
+# pull_request_review_comment - в pull_request.number; run_id - страховка
+# от пустой группы, чтобы прогоны не слипались в одну очередь.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  opencode:
+    if: |
+      github.event.comment.user.type != 'Bot' &&
+      (startsWith(github.event.comment.body, '/oc') ||
+      contains(github.event.comment.body, ' /oc') ||
+      startsWith(github.event.comment.body, '/opencode') ||
+      contains(github.event.comment.body, ' /opencode')) &&
+      (github.event.comment.author_association == 'OWNER' ||
+      github.event.comment.author_association == 'MEMBER' ||
+      github.event.comment.author_association == 'COLLABORATOR') &&
+      (github.event_name != 'pull_request_review_comment' ||
+      github.event.pull_request.head.repo.fork == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v7.0.1
+        with:
+          persist-credentials: false
+
+      # даже доверенный комментарий на PR из недоверенного fork подкладывает
+      # untrusted-код форка в worktree, поэтому issue-комментарии к таким PR
+      # не запускают агент (в payload issue_comment нет head-репозитория,
+      # поэтому fork проверяем запросом через API).
+      - name: Guard - недоверенный fork не получает секреты
+        id: fork_guard
+        if: github.event_name == 'issue_comment' && github.event.issue.pull_request != null
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh api "repos/$REPO/pulls/$NUMBER" --jq '.head.repo.fork')" = "true" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run opencode
+        if: steps.fork_guard.outputs.skip != 'true'
+        uses: anomalyco/opencode/github@810c0eba1a7348036f8bdf61e6632d0c36c6876c # anomalyco/opencode v1.19.5
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }} # имя секрета зависит от провайдера в model
+        with:
+          model: opencode/glm-5.3-flash-free
+          # Набор команд упоминания задан явно и совпадает с условиями в if:
+          # точное совпадение - резюме треда, упоминание в тексте - текст как задание.
+          mentions: /opencode,/oc
+          # share не задан и не нужен: фичу публикации ссылок на сессию
+          # закрыли в апстриме - с экшена v1.19.5 input deprecated и игнорируется.
