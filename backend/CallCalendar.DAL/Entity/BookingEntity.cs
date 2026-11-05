@@ -14,6 +14,9 @@ public sealed class BookingEntity
 
     public required string GuestEmail { get; init; }
 
+    /// <summary>null — запись создана до появления темы разговора.</summary>
+    public string? Topic { get; init; }
+
     public string? Comment { get; init; }
 
     public required DateTimeOffset CreatedAt { get; init; }

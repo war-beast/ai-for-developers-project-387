@@ -15,6 +15,8 @@ import {
 } from '@/lib/dates'
 
 const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+const DEFAULT_TOPIC = 'Пожаловаться на трудную судьбу'
+const MAX_TOPIC_LENGTH = 250
 
 export function EventTypePage() {
   const { typeId = '' } = useParams()
@@ -23,6 +25,7 @@ export function EventTypePage() {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
   const [guestName, setGuestName] = useState('')
   const [guestEmail, setGuestEmail] = useState('')
+  const [topic, setTopic] = useState(DEFAULT_TOPIC)
   const [comment, setComment] = useState('')
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [slotTaken, setSlotTaken] = useState(false)
@@ -43,6 +46,7 @@ export function EventTypePage() {
         start,
         guestName,
         guestEmail,
+        topic,
         ...(comment ? { comment } : {}),
       }),
     onSuccess: (created) => {
@@ -52,6 +56,7 @@ export function EventTypePage() {
       setFieldErrors({})
       setGuestName('')
       setGuestEmail('')
+      setTopic(DEFAULT_TOPIC)
       setComment('')
       void queryClient.invalidateQueries({ queryKey: ['slots', typeId] })
     },
@@ -104,6 +109,9 @@ export function EventTypePage() {
         <p className="text-lg">{booking.eventTypeTitle}</p>
         <p className="text-muted-foreground">
           {formatDateTime(booking.start)} · {slotWindow.timeZone}
+        </p>
+        <p className="text-muted-foreground">
+          Тема разговора: {booking.topic}
         </p>
         <p className="text-muted-foreground">
           Подтверждение придёт на {booking.guestEmail}.
@@ -217,6 +225,14 @@ export function EventTypePage() {
                   value={guestEmail}
                   errors={fieldErrors.guestEmail}
                   onChange={setGuestEmail}
+                />
+                <TextField
+                  id="booking-topic"
+                  label="Тема разговора"
+                  value={topic}
+                  errors={fieldErrors.topic}
+                  maxLength={MAX_TOPIC_LENGTH}
+                  onChange={setTopic}
                 />
                 <TextField
                   id="booking-comment"

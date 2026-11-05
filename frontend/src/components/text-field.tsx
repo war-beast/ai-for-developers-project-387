@@ -8,6 +8,7 @@ type TextFieldProps = {
   errors?: string[]
   type?: 'text' | 'email' | 'number'
   rows?: number
+  maxLength?: number
   onChange: (value: string) => void
 }
 
@@ -22,6 +23,7 @@ export function TextField({
   errors,
   type = 'text',
   rows,
+  maxLength,
   onChange,
 }: TextFieldProps) {
   const invalid = errors?.length ? true : undefined
@@ -37,6 +39,7 @@ export function TextField({
           name={id}
           value={value}
           rows={rows}
+          maxLength={maxLength}
           aria-invalid={invalid}
           className={`${inputClassName} h-auto py-2`}
           onChange={(event) => onChange(event.target.value)}
@@ -47,6 +50,7 @@ export function TextField({
           name={id}
           type={type}
           value={value}
+          maxLength={maxLength}
           aria-invalid={invalid}
           className={inputClassName}
           onChange={(event) => onChange(event.target.value)}

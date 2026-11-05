@@ -12,9 +12,16 @@ public sealed record Booking(
     DateTimeOffset End,
     string GuestName,
     string GuestEmail,
+    string Topic,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Comment,
     DateTimeOffset CreatedAt)
 {
+    /// <summary>Тема разговора по умолчанию; ей же показываются старые записи.</summary>
+    public const string DefaultTopic = "Пожаловаться на трудную судьбу";
+
+    /// <summary>Максимальная длина темы вместе с пробельными символами.</summary>
+    public const int MaxTopicLength = 250;
+
     /// <summary>
     /// Создаёт запись, если она не пересекается ни с одной из существующих
     /// (встык — не пересечение): правило применяется здесь, а не в выборке
@@ -26,6 +33,7 @@ public sealed record Booking(
         DateTimeOffset start,
         string guestName,
         string guestEmail,
+        string topic,
         string? comment,
         IReadOnlyList<BookingEntity> existing,
         DateTimeOffset now)
@@ -44,6 +52,7 @@ public sealed record Booking(
             end,
             guestName.Trim(),
             guestEmail.Trim(),
+            topic.Trim(),
             string.IsNullOrWhiteSpace(comment) ? null : comment.Trim(),
             now);
     }

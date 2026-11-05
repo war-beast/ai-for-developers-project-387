@@ -72,6 +72,8 @@ export interface components {
             end: string;
             guestName: string;
             guestEmail: string;
+            /** @description Тема разговора; в старых записях — значение по умолчанию. */
+            topic: string;
             comment?: string;
             /** Format: date-time */
             createdAt: string;
@@ -82,6 +84,8 @@ export interface components {
             start: string;
             guestName: string;
             guestEmail: string;
+            /** @description Тема разговора, обязательна; не длиннее 250 символов вместе с пробельными. */
+            topic: string;
             comment?: string;
         };
         CreateEventTypeRequest: {

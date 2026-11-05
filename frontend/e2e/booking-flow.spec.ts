@@ -44,13 +44,14 @@ test('владелец создаёт тип, гость бронирует сл
   await slot.click()
   await page.getByLabel('Имя').fill('Гость сценария')
   await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Комментарий').fill('Сквозной сценарий')
+  await page.getByLabel('Тема разговора').fill('Сквозной сценарий')
   await page.getByRole('button', { name: 'Забронировать' }).click()
 
   await expect(
     page.getByRole('heading', { level: 1, name: 'Вы записаны' }),
   ).toBeVisible()
   await expect(page.getByText(email)).toBeVisible()
+  await expect(page.getByText('Тема разговора: Сквозной сценарий')).toBeVisible()
 
   // Владелец видит созданную через UI запись в списке встреч.
   await page.goto('/admin/meetings')

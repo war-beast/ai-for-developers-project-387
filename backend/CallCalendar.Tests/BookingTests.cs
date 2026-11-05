@@ -25,6 +25,7 @@ public class BookingTests
             Ten.AddMinutes(30),
             "Гость",
             "guest@example.com",
+            "Тема разговора",
             null,
             [Existing(Ten, Ten.AddMinutes(60))],
             Ten);
@@ -40,6 +41,7 @@ public class BookingTests
             Ten.AddMinutes(60),
             "Гость",
             "guest@example.com",
+            "Тема разговора",
             null,
             [Existing(Ten, Ten.AddMinutes(60))],
             Ten);
@@ -55,6 +57,7 @@ public class BookingTests
             Ten,
             "Гость",
             "guest@example.com",
+            "Тема разговора",
             null,
             [],
             Ten);
@@ -71,6 +74,7 @@ public class BookingTests
             Ten,
             "  Гость  ",
             "  guest@example.com  ",
+            "  Тема разговора  ",
             "   ",
             [],
             Ten);
@@ -78,6 +82,7 @@ public class BookingTests
         Assert.NotNull(booking);
         Assert.Equal("Гость", booking.GuestName);
         Assert.Equal("guest@example.com", booking.GuestEmail);
+        Assert.Equal("Тема разговора", booking.Topic);
         Assert.Null(booking.Comment);
     }
 
@@ -89,6 +94,7 @@ public class BookingTests
             Ten,
             "Гость",
             "guest@example.com",
+            "Тема разговора",
             "Перезвоните",
             [],
             Ten);

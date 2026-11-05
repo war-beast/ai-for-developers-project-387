@@ -41,6 +41,7 @@ public sealed class BookingService(
             start,
             command.GuestName!,
             command.GuestEmail!,
+            command.Topic!,
             command.Comment,
             bookingRepository.GetOverlapping(start, end),
             timeProvider.GetUtcNow());
@@ -79,6 +80,7 @@ public sealed class BookingService(
             entity.End,
             entity.GuestName,
             entity.GuestEmail,
+            string.IsNullOrWhiteSpace(entity.Topic) ? Booking.DefaultTopic : entity.Topic,
             entity.Comment,
             entity.CreatedAt);
 
@@ -91,6 +93,7 @@ public sealed class BookingService(
             End = booking.End,
             GuestName = booking.GuestName,
             GuestEmail = booking.GuestEmail,
+            Topic = booking.Topic,
             Comment = booking.Comment,
             CreatedAt = booking.CreatedAt,
         };
@@ -125,6 +128,16 @@ public sealed class BookingService(
                  || address.Address != guestEmail)
         {
             errors["guestEmail"] = [$"Укажите корректный email не длиннее {MaxGuestEmailLength} символов."];
+        }
+
+        var topic = command.Topic ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(topic))
+        {
+            errors["topic"] = ["Тема разговора обязательна."];
+        }
+        else if (topic.Length > Booking.MaxTopicLength)
+        {
+            errors["topic"] = [$"Тема разговора не длиннее {Booking.MaxTopicLength} символов."];
         }
 
         if ((command.Comment?.Trim().Length ?? 0) > MaxCommentLength)

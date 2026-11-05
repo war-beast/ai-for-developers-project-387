@@ -18,7 +18,7 @@ public class BookingsApiTests
         var start = await FirstFreeSlot(client, "intro-call");
         var response = await client.PostAsJsonAsync(
             "/api/bookings",
-            new CreateBookingCommand("intro-call", start, "Гость", "guest@example.com", "Перезвоните"),
+            new CreateBookingCommand("intro-call", start, "Гость", "guest@example.com", "Тема разговора", "Перезвоните"),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -34,6 +34,7 @@ public class BookingsApiTests
         Assert.Equal(start.AddMinutes(30), booking.End);
         Assert.Equal("Гость", booking.GuestName);
         Assert.Equal("guest@example.com", booking.GuestEmail);
+        Assert.Equal("Тема разговора", booking.Topic);
         Assert.Equal("Перезвоните", booking.Comment);
 
         var window = await client.GetFromJsonAsync<SlotWindow>(
@@ -54,7 +55,7 @@ public class BookingsApiTests
 
         var response = await client.PostAsJsonAsync(
             "/api/bookings",
-            new CreateBookingCommand("intro-call", start.AddMinutes(30), "Гость", "guest@example.com", null),
+            new CreateBookingCommand("intro-call", start.AddMinutes(30), "Гость", "guest@example.com", "Тема разговора", null),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
@@ -76,7 +77,7 @@ public class BookingsApiTests
 
         var response = await client.PostAsJsonAsync(
             "/api/bookings",
-            new CreateBookingCommand("intro-call", offGrid, "Гость", "guest@example.com", null),
+            new CreateBookingCommand("intro-call", offGrid, "Гость", "guest@example.com", "Тема разговора", null),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -92,7 +93,7 @@ public class BookingsApiTests
 
         var response = await client.PostAsJsonAsync(
             "/api/bookings",
-            new CreateBookingCommand("missing", DateTimeOffset.UtcNow.AddDays(3), "Гость", "guest@example.com", null),
+            new CreateBookingCommand("missing", DateTimeOffset.UtcNow.AddDays(3), "Гость", "guest@example.com", "Тема разговора", null),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -109,7 +110,7 @@ public class BookingsApiTests
 
         var response = await client.PostAsJsonAsync(
             "/api/bookings",
-            new CreateBookingCommand("intro-call", start, " ", "не-email", new string('К', 501)),
+            new CreateBookingCommand("intro-call", start, " ", "не-email", "Тема разговора", new string('К', 501)),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -126,6 +127,35 @@ public class BookingsApiTests
     }
 
     [Fact]
+    public async Task MissingTopicReturnsValidationProblem()
+    {
+        using var factory = new WebApplicationFactory<Program>();
+        using var client = factory.CreateClient();
+        await CreateEventType(client, "intro-call", "Знакомство", 30);
+        var start = await FirstFreeSlot(client, "intro-call");
+
+        var response = await client.PostAsJsonAsync(
+            "/api/bookings",
+            new
+            {
+                eventTypeId = "intro-call",
+                start,
+                guestName = "Гость",
+                guestEmail = "guest@example.com",
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken));
+        Assert.Equal("validation_failed", problem.RootElement.GetProperty("code")
+            .GetString());
+        Assert.True(problem.RootElement.GetProperty("errors")
+            .TryGetProperty("topic", out _));
+    }
+
+    [Fact]
     public async Task ConcurrentBookingsForOneSlotCreateExactlyOne()
     {
         using var factory = new WebApplicationFactory<Program>();
@@ -137,7 +167,7 @@ public class BookingsApiTests
             .Select(_ =>
                 client.PostAsJsonAsync(
                     "/api/bookings",
-                    new CreateBookingCommand("intro-call", start, "Гость", "guest@example.com", null),
+                    new CreateBookingCommand("intro-call", start, "Гость", "guest@example.com", "Тема разговора", null),
                     TestContext.Current.CancellationToken)));
 
         Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Created);
@@ -168,6 +198,7 @@ public class BookingsApiTests
         Assert.Equal(start, booking.Start);
         Assert.Equal("Гость", booking.GuestName);
         Assert.Equal("guest@example.com", booking.GuestEmail);
+        Assert.Equal("Тема разговора", booking.Topic);
     }
 
     [Fact]
@@ -235,7 +266,7 @@ public class BookingsApiTests
     {
         var response = await client.PostAsJsonAsync(
             "/api/bookings",
-            new CreateBookingCommand(eventTypeId, start, "Гость", "guest@example.com", null),
+            new CreateBookingCommand(eventTypeId, start, "Гость", "guest@example.com", "Тема разговора", null),
             TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }

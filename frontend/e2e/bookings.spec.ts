@@ -28,7 +28,7 @@ test('гость бронирует слот, повторная бронь то
 
   await page.getByLabel('Имя').fill('Гость')
   await page.getByLabel('Email').fill('guest@example.com')
-  await page.getByLabel('Комментарий').fill('Перезвоните')
+  await page.getByLabel('Тема разговора').fill('Перезвоните')
   await page.getByRole('button', { name: 'Забронировать' }).click()
 
   await expect(
@@ -56,6 +56,7 @@ test('гость бронирует слот, повторная бронь то
       start: nextSlot.start,
       guestName: 'Другой гость',
       guestEmail: 'other@example.com',
+      topic: 'Другая тема',
     },
   })
   expect(other.ok()).toBeTruthy()

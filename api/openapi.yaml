@@ -146,6 +146,7 @@ components:
         - end
         - guestName
         - guestEmail
+        - topic
         - createdAt
       properties:
         id:
@@ -164,6 +165,9 @@ components:
           type: string
         guestEmail:
           type: string
+        topic:
+          type: string
+          description: Тема разговора; в старых записях — значение по умолчанию.
         comment:
           type: string
         createdAt:
@@ -177,6 +181,7 @@ components:
         - start
         - guestName
         - guestEmail
+        - topic
       properties:
         eventTypeId:
           type: string
@@ -187,6 +192,9 @@ components:
           type: string
         guestEmail:
           type: string
+        topic:
+          type: string
+          description: Тема разговора, обязательна; не длиннее 250 символов вместе с пробельными.
         comment:
           type: string
     CreateEventTypeRequest:

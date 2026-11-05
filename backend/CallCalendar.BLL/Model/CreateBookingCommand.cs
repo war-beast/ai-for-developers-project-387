@@ -6,4 +6,5 @@ public sealed record CreateBookingCommand(
     DateTimeOffset? Start,
     string? GuestName,
     string? GuestEmail,
+    string? Topic,
     string? Comment);

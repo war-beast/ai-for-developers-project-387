@@ -42,6 +42,9 @@ export function MeetingsPage() {
                   {booking.guestName} — {booking.guestEmail}
                   {booking.comment ? ` — ${booking.comment}` : ''}
                 </p>
+                <p className="text-muted-foreground">
+                  Тема разговора: {booking.topic}
+                </p>
               </li>
             )
           })}

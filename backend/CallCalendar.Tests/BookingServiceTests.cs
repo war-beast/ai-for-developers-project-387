@@ -56,12 +56,49 @@ public class BookingServiceTests
                 At(28, 10, 0),
                 "Гость",
                 "не-email",
+                "Тема разговора",
                 new string('К', 501)));
 
         Assert.Null(result.Created);
         Assert.False(result.Errors.ContainsKey("guestName"));
         Assert.True(result.Errors.ContainsKey("guestEmail"));
         Assert.True(result.Errors.ContainsKey("comment"));
+    }
+
+    [Fact]
+    public void BlankTopicIsRejected()
+    {
+        AddEventType("intro-call", 30);
+
+        var result = CreateService()
+            .Create(new CreateBookingCommand(
+                "intro-call",
+                At(28, 10, 0),
+                "Гость",
+                "guest@example.com",
+                "   ",
+                null));
+
+        Assert.Null(result.Created);
+        Assert.True(result.Errors.ContainsKey("topic"));
+    }
+
+    [Fact]
+    public void TopicLongerThanLimitIncludingWhitespaceIsRejected()
+    {
+        AddEventType("intro-call", 30);
+
+        var result = CreateService()
+            .Create(new CreateBookingCommand(
+                "intro-call",
+                At(28, 10, 0),
+                "Гость",
+                "guest@example.com",
+                $"{new string('Т', 249)}  ",
+                null));
+
+        Assert.Null(result.Created);
+        Assert.True(result.Errors.ContainsKey("topic"));
     }
 
     [Fact]
@@ -76,6 +113,7 @@ public class BookingServiceTests
                 At(28, 10, 0),
                 $"  {name}  ",
                 "guest@example.com",
+                "Тема разговора",
                 null));
 
         var booking = Assert.IsType<Booking>(result.Created);
@@ -93,6 +131,7 @@ public class BookingServiceTests
                 At(28, 10, 0),
                 "   ",
                 "",
+                "Тема разговора",
                 null));
 
         Assert.Null(result.Created);
@@ -115,6 +154,7 @@ public class BookingServiceTests
                 new DateTimeOffset(2026, month, day, hour, minute, 0, MoscowOffset),
                 "Гость",
                 "guest@example.com",
+                "Тема разговора",
                 null));
 
         Assert.Null(result.Created);
@@ -142,6 +182,7 @@ public class BookingServiceTests
                 At(28, 10, 0),
                 "  Гость  ",
                 "  guest@example.com  ",
+                "  Тема разговора  ",
                 "   "));
 
         var booking = Assert.IsType<Booking>(result.Created);
@@ -152,6 +193,7 @@ public class BookingServiceTests
         Assert.Equal(At(28, 10, 30), booking.End);
         Assert.Equal("Гость", booking.GuestName);
         Assert.Equal("guest@example.com", booking.GuestEmail);
+        Assert.Equal("Тема разговора", booking.Topic);
         Assert.Null(booking.Comment);
         Assert.Equal(Now, booking.CreatedAt);
     }
@@ -199,6 +241,7 @@ public class BookingServiceTests
         Assert.Equal("Знакомство", booking.EventTypeTitle);
         Assert.Equal("Гость", booking.GuestName);
         Assert.Equal("guest@example.com", booking.GuestEmail);
+        Assert.Equal(Booking.DefaultTopic, booking.Topic);
         Assert.Equal("Перезвоните", booking.Comment);
         Assert.Equal(At(28, 10, 30), booking.End);
     }
@@ -251,6 +294,7 @@ public class BookingServiceTests
                 start,
                 "Гость",
                 "guest@example.com",
+                "Тема разговора",
                 null));
 
     private static DateTimeOffset At(int day, int hour, int minute) =>
