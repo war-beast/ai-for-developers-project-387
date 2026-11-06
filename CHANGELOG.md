@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/war-beast/ai-for-developers-project-387/compare/callcalendar-v1.3.0...callcalendar-v1.3.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* **ci:** ограничить исключение Release PR репозиторием-источником ([#38](https://github.com/war-beast/ai-for-developers-project-387/issues/38)) ([#39](https://github.com/war-beast/ai-for-developers-project-387/issues/39)) ([c0df80f](https://github.com/war-beast/ai-for-developers-project-387/commit/c0df80f4b712502073093a1b51087c78e699d5ae))
+
 ## [1.3.0](https://github.com/war-beast/ai-for-developers-project-387/compare/callcalendar-v1.2.0...callcalendar-v1.3.0) (2026-11-06)
 
 
