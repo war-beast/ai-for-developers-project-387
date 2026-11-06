@@ -104,6 +104,19 @@ jobs:
             echo "# Diff"
             gh pr diff "$PR_NUMBER" || echo "НЕДОСТУПНО: diff"
             echo
+            echo "# Changed files (full content, after the change)"
+            gh pr diff "$PR_NUMBER" --name-only | while IFS= read -r path; do
+              [ -z "$path" ] && continue
+              echo "## File: $path"
+              if [ ! -f "$path" ]; then
+                echo "НЕДОСТУПНО: файла нет в checkout (удалён или переименован)"
+              elif [ "$(wc -c < "$path")" -gt 200000 ]; then
+                echo "НЕДОСТУПНО: файл больше 200 КБ; смотри diff"
+              else
+                sed -n '1,600p' "$path"
+              fi
+              echo
+            done
             echo "# Checks"
             gh pr checks "$PR_NUMBER" || true
             echo
@@ -142,9 +155,12 @@ jobs:
 
           cat > "$RUNNER_TEMP/review-prompt.md" <<'PROMPT'
           Ты — независимый ревьюер PR. Не меняй файлы, не создавай коммиты, не
-          одобряй и не сливай PR. Твои входные данные: файлы PR в рабочем каталоге,
-          review-context.md (diff, тело PR, комментарии, связанные issue, CI),
-          REVIEW.md из базовой ветки, AGENTS.md и CODING_STANDARDS.md.
+          одобряй и не сливай PR. У тебя нет инструментов и сети: не пытайся
+          читать репозиторий или вызывать команды. Твои входные данные —
+          приложенные файлы: review-context.md (тело PR, diff, полное
+          содержимое изменённых файлов, комментарии, связанные issue, CI),
+          REVIEW.md из базовой ветки, AGENTS.md и CODING_STANDARDS.md. Этого
+          достаточно; если чего-то не хватает, считай это пробелом контекста.
 
           Проверь diff против согласованной спецификации и REVIEW.md. Найди в
           контексте ссылки на исходное обращение, спецификацию и согласование
@@ -170,8 +186,9 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           # OPENCODE_PERMISSION в 2.2.5 не поддерживается: запреты задаются
-          # inline-конфигом. Ревьюеру разрешены только чтение, glob и grep.
-          OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny"},"glob":"allow","grep":"allow","external_directory":"deny","doom_loop":"deny"},"agent":{"plan":{"permission":{"bash":"deny","edit":"deny","webfetch":"deny","websearch":"deny","task":"deny"}}}}'
+          # inline-конфигом. Все инструменты запрещены: ревьюеру хватает
+          # приложенного контекста, а цикл «читаю файлы» не съедает тайм-аут.
+          OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"deny"}}'
         run: |
           set +e
           start=$(date +%s)
