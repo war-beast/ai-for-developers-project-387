@@ -93,7 +93,7 @@ mise run e2e
   Комментарий из одной команды (`/oc`) — резюме треда.
   В комментарии к коду в Files-табе PR агент дополнительно получает файл и
   строки ревью.
-- **Модель**: `opencode/deepseek-v4.1-flash-free` (провайдер `opencode`),
+- **Модель**: `opencode/glm-5.3-flash-free` (провайдер `opencode`),
   ключ — `OPENCODE_API_KEY` в GitHub Secrets (Settings → Secrets and
   variables → Actions); мелкие задачи апстрим берёт из `small_model` в
   `opencode.json` — той же бесплатной моделью, чтобы заголовок сессии не
