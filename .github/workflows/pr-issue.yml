@@ -26,8 +26,17 @@ jobs:
           REPO: ${{ github.repository }}
           BODY: ${{ github.event.pull_request.body }}
           BASE: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
+          # Release PR генерирует release-please: он не закрывает issue, релиз
+          # ведёт автоматика. Закрывающая ссылка требуется только от ручных PR.
+          case "$HEAD_REF" in
+            release-please--*)
+              echo "Release PR release-please: ссылка на issue не требуется."
+              exit 0
+              ;;
+          esac
           if [ "$BASE" = "dev" ]; then
             pattern='(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]+#[0-9]+'
             hint="PR в dev должен закрывать issue: добавьте в описание 'Closes #12'."
