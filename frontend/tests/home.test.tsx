@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router'
+import { cleanup, screen } from '@testing-library/react'
 
-import App from '@/App'
+import { renderAppAt } from './render-app'
 
 vi.mock('@/api/client', () => ({
   api: {
@@ -14,22 +12,8 @@ vi.mock('@/api/client', () => ({
 
 afterEach(cleanup)
 
-function renderAt(path: string) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-
-  render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
-        <App />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  )
-}
-
 test('главная рассказывает про сервис', () => {
-  renderAt('/')
+  renderAppAt('/')
 
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
     'Календарь звонков',
@@ -38,7 +22,7 @@ test('главная рассказывает про сервис', () => {
 })
 
 test('панель навигации ведёт в админку и встречи', () => {
-  renderAt('/')
+  renderAppAt('/')
 
   expect(screen.getByRole('link', { name: 'Календарь' }).getAttribute('href')).toBe('/')
   expect(screen.getByRole('link', { name: 'Админка' }).getAttribute('href')).toBe('/admin')
@@ -48,14 +32,14 @@ test('панель навигации ведёт в админку и встре
 })
 
 test('главная зовёт в каталог и перечисляет функции гостя', () => {
-  renderAt('/')
+  renderAppAt('/')
 
   expect(screen.getByRole('link', { name: 'Записаться' }).getAttribute('href')).toBe('/book')
   expect(screen.getByText('Выбрать тип встречи')).toBeTruthy()
 })
 
 test('страница записи показывает пустой каталог', async () => {
-  renderAt('/book')
+  renderAppAt('/book')
 
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
     'Запись на звонок',

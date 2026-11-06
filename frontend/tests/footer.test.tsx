@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router'
+import { cleanup, screen } from '@testing-library/react'
 
-import App from '@/App'
+import { renderAppAt } from './render-app'
 
 vi.mock('@/api/client', () => ({
   api: {
@@ -14,31 +12,17 @@ vi.mock('@/api/client', () => ({
 
 afterEach(cleanup)
 
-function renderAt(path: string) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-
-  render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
-        <App />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  )
-}
-
 test.each(['/', '/book', '/admin', '/privacy'])(
   'подвал виден на маршруте %s',
   (path) => {
-    renderAt(path)
+    renderAppAt(path)
 
     expect(screen.getByRole('contentinfo')).toBeTruthy()
   },
 )
 
 test('подвал содержит текущий год и название сервиса', () => {
-  renderAt('/')
+  renderAppAt('/')
 
   const year = new Date().getFullYear()
   expect(screen.getByRole('contentinfo').textContent).toContain(
@@ -47,7 +31,7 @@ test('подвал содержит текущий год и название с
 })
 
 test('ссылка «Политика конфиденциальности» ведёт на /privacy в новой вкладке', () => {
-  renderAt('/')
+  renderAppAt('/')
 
   const link = screen.getByRole('link', { name: 'Политика конфиденциальности' })
   expect(link.getAttribute('href')).toBe('/privacy')
@@ -56,7 +40,7 @@ test('ссылка «Политика конфиденциальности» в�
 })
 
 test('страница /privacy показывает политику не длиннее 1000 символов', () => {
-  renderAt('/privacy')
+  renderAppAt('/privacy')
 
   expect(
     screen.getByRole('heading', { level: 1, name: 'Политика конфиденциальности' }),
@@ -65,5 +49,10 @@ test('страница /privacy показывает политику не дл�
   const text = screen.getByRole('main').textContent ?? ''
   expect(text).toContain('имя')
   expect(text).toContain('адрес электронной почты')
+  expect(text).toContain('тему разговора')
+  expect(text).toContain('комментарий')
+  expect(text).toContain('организации и проведения звонка')
+  expect(text).toContain('хранятся')
+  expect(text).toContain('вправе')
   expect(text.length).toBeLessThanOrEqual(1000)
 })
