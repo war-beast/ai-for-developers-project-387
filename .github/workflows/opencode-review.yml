@@ -194,7 +194,7 @@ jobs:
           start=$(date +%s)
           timeout -k 10s 600s mise exec aqua:anomalyco/opencode@2.2.5 -- \
             opencode run --print-logs --log-level info \
-            --model opencode/deepseek-v4.1-flash-free \
+            --model opencode/glm-5.3-flash-free \
             --agent plan \
             --format json \
             --file "$RUNNER_TEMP/review-input/REVIEW.md" \

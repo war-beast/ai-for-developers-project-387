@@ -80,7 +80,7 @@ jobs:
           # app-token экшена в shell не пробрасывается).
           GH_TOKEN: ${{ github.token }}
         with:
-          model: opencode/deepseek-v4.1-flash-free
+          model: opencode/glm-5.3-flash-free
           # У события issues нет текста команды, поэтому инструкция обязана
           # жить в prompt (экшен его требует для issues).
           prompt: |

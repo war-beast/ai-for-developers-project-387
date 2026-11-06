@@ -141,7 +141,7 @@ jobs:
           # лейблы и sub-issue links (приложение свой app-token в shell не пробрасывает).
           GH_TOKEN: ${{ github.token }}
         with:
-          model: opencode/deepseek-v4.1-flash-free
+          model: opencode/glm-5.3-flash-free
           # Набор команд упоминания задан явно и совпадает с условиями в if:
           # точное совпадение - резюме треда, упоминание в тексте - текст как задание.
           mentions: /opencode,/oc
