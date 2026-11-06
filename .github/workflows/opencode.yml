@@ -45,7 +45,9 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-      pull-requests: read
+      # write, а не read: итог по бюджету публикуется комментарием в PR,
+      # а раннеру issue_comment с одним issues: write это недоступно (403).
+      pull-requests: write
       issues: write
       actions: read
       id-token: write
@@ -206,13 +208,15 @@ jobs:
                 "${HEAD_SHA:-неизвестен}" "$RUN_URL")
               ;;
           esac
-          gh api --method POST "repos/$REPO/issues/$NUMBER/comments" -f body="$text" >/dev/null
+          # gh issue comment работает и для PR: комментарий один и тот же
+          # ресурс, а проверенный в авторевью путь не упирается в права REST.
+          gh issue comment "$NUMBER" --repo "$REPO" --body "$text" >/dev/null
           # Лейбл может отсутствовать в свежем репозитории: создаём идемпотентно.
           gh label create ready-for-human \
             --description "Requires human implementation" \
             --color 5319e7 --repo "$REPO" >/dev/null 2>&1 || true
           gh api --method POST "repos/$REPO/issues/$NUMBER/labels" \
-            -f 'labels[]=ready-for-human' >/dev/null || true
+            -f 'labels[]=ready-for-human' >/dev/null
           if [ "$REASON" = "limit_exhausted" ]; then
             exit 0
           fi
