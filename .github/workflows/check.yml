@@ -14,7 +14,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v7
         with:
@@ -23,5 +23,57 @@ jobs:
       # Все инструменты, включая .NET SDK, ставит mise из [tools] mise.toml
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # jdx/mise-action v3
 
+      # continue-on-error: артефакт с итогом и логами должен появиться даже
+      # при падении, а красный статус ставится отдельным шагом ниже.
       - name: Run all checks
-        run: mise run check
+        id: checks
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mise run check 2>&1 | tee check.log
+
+      # Артефакт - доказательство прогона: точный head SHA, итог и лог.
+      # Для PR это SHA последнего коммита в ветке, для push - SHA коммита.
+      - name: Write CI evidence
+        if: always()
+        env:
+          OUTCOME: ${{ steps.checks.outcome }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts
+          cp check.log ci-artifacts/check.log 2>/dev/null || true
+          jq -n \
+            --arg sha "$HEAD_SHA" \
+            --arg outcome "$OUTCOME" \
+            --arg event "$EVENT" \
+            --arg ref "$REF" \
+            --arg runUrl "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{
+              headSha: $sha,
+              outcome: $outcome,
+              event: $event,
+              ref: $ref,
+              runUrl: $runUrl,
+              workflow: "check"
+            }' > ci-artifacts/ci-evidence.json
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # actions/upload-artifact v7.0.2
+        with:
+          name: ci-evidence-${{ github.run_id }}
+          path: |
+            ci-artifacts/
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Возвращаем исходный статус: continue-on-error выше нужен только для
+      # того, чтобы артефакт загрузился и при падении.
+      - name: Fail if checks failed
+        if: steps.checks.outcome != 'success'
+        run: exit 1
