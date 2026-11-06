@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.0](https://github.com/war-beast/ai-for-developers-project-387/compare/callcalendar-v1.2.0...callcalendar-v1.3.0) (2026-11-06)
+
+
+### Features
+
+* автотриаж новых обращений ([#19](https://github.com/war-beast/ai-for-developers-project-387/issues/19)) ([#20](https://github.com/war-beast/ai-for-developers-project-387/issues/20)) ([ed59743](https://github.com/war-beast/ai-for-developers-project-387/commit/ed597433b83376b58d79eccb7d541c7f8c307c8b))
+* встречи в две колонки и mailto-ссылка на email гостя ([#30](https://github.com/war-beast/ai-for-developers-project-387/issues/30)) ([73d6986](https://github.com/war-beast/ai-for-developers-project-387/commit/73d6986417507f54d94572ba5b0dce80c8653d31))
+* запуск opencode из комментария в issue ([#4](https://github.com/war-beast/ai-for-developers-project-387/issues/4)) ([#5](https://github.com/war-beast/ai-for-developers-project-387/issues/5)) ([bef3c7a](https://github.com/war-beast/ai-for-developers-project-387/commit/bef3c7a132a67397e36a5ca332c9b58170864c0f))
+* модель deepseek-v4.1-flash-free для воркфлоу opencode ([#8](https://github.com/war-beast/ai-for-developers-project-387/issues/8)) ([#9](https://github.com/war-beast/ai-for-developers-project-387/issues/9)) ([7f88d19](https://github.com/war-beast/ai-for-developers-project-387/commit/7f88d193ca8bc748295d9d77e889b5dd37dd349f))
+
+
+### Bug Fixes
+
+* **ci:** не требовать ссылку на issue от Release PR ([#36](https://github.com/war-beast/ai-for-developers-project-387/issues/36)) ([#37](https://github.com/war-beast/ai-for-developers-project-387/issues/37)) ([7011183](https://github.com/war-beast/ai-for-developers-project-387/commit/701118368bb004fbcb01f09a6e72d033ee3c5473))
+* **ci:** публиковать отказ по бюджету /oc без 403 ([#34](https://github.com/war-beast/ai-for-developers-project-387/issues/34)) ([0d42438](https://github.com/war-beast/ai-for-developers-project-387/commit/0d42438bbf7ad0e13bfa9bee00af6a078968a051))
+
 ## [1.2.0](https://github.com/war-beast/ai-for-developers-project-386/compare/callcalendar-v1.1.0...callcalendar-v1.2.0) (2026-10-28)
 
 
