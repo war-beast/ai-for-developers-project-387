@@ -66,8 +66,8 @@ test('встречи идут в одну колонку на узком экр�
 
   const windowResponse = await request.get(`/api/event-types/${id}/slots`)
   const window = (await windowResponse.json()) as SlotWindow
-  // Берём первый свободный слот: последний занимает сценарий списка встреч.
-  const start = window.days.flatMap((day) => day.slots)[0]!.start
+  // Бронируем последний слот окна: ранние слоты проверяют другие браузерные сценарии.
+  const start = window.days.flatMap((day) => day.slots).at(-1)!.start
   const email = `${id}@example.com`
 
   const booking = await request.post('/api/bookings', {
