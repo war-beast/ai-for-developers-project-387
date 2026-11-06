@@ -1,4 +1,8 @@
 name: opencode
+# run-name - ключ счётчика бюджета: workflow читает историю Actions и суммирует
+# попытки по префиксу PR/issue. Меняя формат, обнови и шаг «Budget gate»
+# (docs/adr/0004-pr-review-budget.md).
+run-name: "opencode budget v1 #${{ github.event.issue.number || github.event.pull_request.number || 'thread' }} · ${{ github.event.comment.id || github.run_id }}"
 
 on:
   # Триггеры issue_comment и pull_request_review_comment доступны любому
@@ -16,9 +20,13 @@ on:
 # недописанным. У issue_comment номер в issue.number, у
 # pull_request_review_comment - в pull_request.number; run_id - страховка
 # от пустой группы, чтобы прогоны не слипались в одну очередь.
+# Сериализация важна и для бюджета: параллельный прогон увидел бы неполную
+# историю и мог бы пропустить лишнюю попытку.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
   cancel-in-progress: false
+
+permissions: {}
 
 jobs:
   opencode:
@@ -34,12 +42,22 @@ jobs:
       (github.event_name != 'pull_request_review_comment' ||
       github.event.pull_request.head.repo.fork == false)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       pull-requests: read
       issues: write
+      actions: read
       id-token: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      # Бюджет попыток на один PR/issue: 2. Причина и правило подсчёта -
+      # в docs/adr/0004-pr-review-budget.md.
+      BUDGET: 2
+      BUDGET_PREFIX: "opencode budget v1 #${{ github.event.issue.number || github.event.pull_request.number || 'thread' }} ·"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v7.0.1
@@ -54,8 +72,6 @@ jobs:
         id: fork_guard
         if: github.event_name == 'issue_comment' && github.event.issue.pull_request != null
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
           NUMBER: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
@@ -63,8 +79,61 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Run opencode
+      # Последний SHA треда нужен и агенту, и итоговому статусу: по нему
+      # человек понимает, к какой версии относится отказ или сбой.
+      - name: Resolve head SHA
+        id: sha
         if: steps.fork_guard.outputs.skip != 'true'
+        env:
+          EVENT_PR_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_URL: ${{ github.event.issue.pull_request.url }}
+        run: |
+          set -euo pipefail
+          sha="${EVENT_PR_SHA:-}"
+          if [ -z "$sha" ] && [ -n "${PR_URL:-}" ]; then
+            sha=$(gh api "repos/$REPO/pulls/$NUMBER" --jq '.head.sha')
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # Счётчик попыток. Считаем по истории Actions, а не по комментариям:
+      # Re-run увеличивает run_attempt, отмена не удаляет прогон, а запуски
+      # без команды /oc имеют conclusion=skipped и в счёт не идут. Текущий
+      # прогон уже виден в списке, поэтому его попытка входит в сумму.
+      - name: Budget gate
+        id: budget
+        if: steps.fork_guard.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          runs=$(gh run list --workflow opencode.yml --limit 200 \
+            --json displayTitle,conclusion,attempt)
+          attempts=$(printf '%s' "$runs" | jq -r --arg prefix "$BUDGET_PREFIX" \
+            '[.[] | select(.conclusion != "skipped"
+              and (.displayTitle | startswith($prefix))) | .attempt]
+             | add // 0')
+          echo "attempts=$attempts" >> "$GITHUB_OUTPUT"
+          if [ "$attempts" -gt "$BUDGET" ]; then
+            echo "exhausted=true" >> "$GITHUB_OUTPUT"
+            echo "reason=limit_exhausted" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "exhausted=false" >> "$GITHUB_OUTPUT"
+
+      # Тайм-аут ограничивает модель, а не только джобу: composite-экшен
+      # не умеет собственный тайм-аут, поэтому время считаем снаружи.
+      - name: Mark agent start
+        id: agent_start
+        if: >-
+          steps.fork_guard.outputs.skip != 'true' &&
+          steps.budget.outputs.exhausted == 'false'
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Run opencode
+        id: agent
+        if: >-
+          steps.fork_guard.outputs.skip != 'true' &&
+          steps.budget.outputs.exhausted == 'false'
+        continue-on-error: true
+        timeout-minutes: 30
         uses: anomalyco/opencode/github@810c0eba1a7348036f8bdf61e6632d0c36c6876c # anomalyco/opencode v1.19.5
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }} # имя секрета зависит от провайдера в model
@@ -78,3 +147,73 @@ jobs:
           mentions: /opencode,/oc
           # share не задан и не нужен: фичу публикации ссылок на сессию
           # закрыли в апстриме - с экшена v1.19.5 input deprecated и игнорируется.
+
+      # Классификация без модели: по исходам шагов и прошедшему времени.
+      # Причина нужна итоговому шагу, который публикует решение.
+      - name: Classify outcome
+        id: classify
+        if: always()
+        run: |
+          set -uo pipefail
+          reason=""
+          if [ "${{ steps.fork_guard.outputs.skip }}" = "true" ]; then
+            reason=""
+          elif [ "${{ steps.sha.outcome }}" = "failure" ] ||
+               [ "${{ steps.budget.outcome }}" = "failure" ]; then
+            reason=infra
+          elif [ "${{ steps.budget.outputs.exhausted }}" = "true" ]; then
+            reason=limit_exhausted
+          elif [ "${{ steps.agent_start.outcome }}" = "failure" ] ||
+               [ "${{ steps.agent.outcome }}" = "failure" ]; then
+            start="${{ steps.agent_start.outputs.epoch }}"
+            elapsed=$(( $(date +%s) - ${start:-$(date +%s)} ))
+            if [ "$elapsed" -ge 1750 ]; then
+              reason=timeout
+            else
+              reason=agent_failed
+            fi
+          fi
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "attempts=${{ steps.budget.outputs.attempts }}" >> "$GITHUB_OUTPUT"
+
+      # Итог публикует отдельный шаг без модели: причина, последний SHA,
+      # ссылка на логи и явный статус «нужен человек». Отказ по бюджету
+      # оставляет прогон зелёным (это ожидаемое решение), сбой - красным.
+      - name: Publish outcome
+        id: publish
+        if: always() && steps.classify.outputs.reason != ''
+        env:
+          REASON: ${{ steps.classify.outputs.reason }}
+          ATTEMPTS: ${{ steps.classify.outputs.attempts }}
+          HEAD_SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -uo pipefail
+          case "$REASON" in
+            limit_exhausted)
+              text=$(printf '**Запусков агента больше нет.**\n\n- Причина: limit_exhausted — израсходован бюджет %s попыток на этот PR/issue (учтено попыток: %s).\n- Последний SHA: %s\n- Логи: %s\n- Статус: **нужен человек** — проверьте результат предыдущих запусков и решите, что делать дальше. Автоматический повтор не будет выполнен.' \
+                "$BUDGET" "${ATTEMPTS:-?}" "${HEAD_SHA:-неизвестен}" "$RUN_URL")
+              ;;
+            timeout)
+              text=$(printf '**Запуск агента прерван по тайм-ауту.**\n\n- Причина: timeout\n- Последний SHA: %s\n- Логи: %s\n- Статус: **нужен человек** — проверьте, на каком шаге остановился агент.' \
+                "${HEAD_SHA:-неизвестен}" "$RUN_URL")
+              ;;
+            infra)
+              text=$(printf '**Запуск агента не состоялся.**\n\n- Причина: infra — не удалось подготовить окружение (секрет, API, история Actions).\n- Последний SHA: %s\n- Логи: %s\n- Статус: **нужен человек** — устраните причину и запустите команду снова, если бюджет позволяет.' \
+                "${HEAD_SHA:-неизвестен}" "$RUN_URL")
+              ;;
+            *)
+              text=$(printf '**Запуск агента завершился ошибкой.**\n\n- Причина: agent_failed\n- Последний SHA: %s\n- Логи: %s\n- Статус: **нужен человек** — проверьте логи; повторный запуск расходует бюджет.' \
+                "${HEAD_SHA:-неизвестен}" "$RUN_URL")
+              ;;
+          esac
+          gh api --method POST "repos/$REPO/issues/$NUMBER/comments" -f body="$text" >/dev/null
+          # Лейбл может отсутствовать в свежем репозитории: создаём идемпотентно.
+          gh label create ready-for-human \
+            --description "Requires human implementation" \
+            --color 5319e7 --repo "$REPO" >/dev/null 2>&1 || true
+          gh api --method POST "repos/$REPO/issues/$NUMBER/labels" \
+            -f 'labels[]=ready-for-human' >/dev/null || true
+          if [ "$REASON" = "limit_exhausted" ]; then
+            exit 0
+          fi
+          exit 1

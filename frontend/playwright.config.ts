@@ -10,10 +10,13 @@ export default defineConfig({
   fullyParallel: false,
   // Один бекенд в памяти на весь прогон: параллельные файлы занимали бы слоты друг друга.
   workers: 1,
-  reporter: 'list',
+  // HTML-отчёт и трассировки складываются в артефакт CI: по ним видно,
+  // что именно сломалось в браузере, без чтения сырых логов.
+  reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://127.0.0.1:5173',
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
   // Локально и на CI используется установленный Chrome: скачивание
   // браузеров Playwright недоступно в этом окружении.

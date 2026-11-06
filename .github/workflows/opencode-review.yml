@@ -1,0 +1,270 @@
+name: OpenCode PR Review
+
+# Независимое авторевью PR: отдельная модель без контекста реализации,
+# критерии — REVIEW.md из базовой ветки. Ревьюер только читает; файлы и
+# комментарии публикует workflow, а не модель. Подробности — REVIEW.md и
+# CONTRIBUTING.md.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+# Новый коммит отменяет устаревшее ревью: замечания к старому SHA не нужны.
+concurrency:
+  group: opencode-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  review:
+    # Только доверенные PR из этого же репозитория: форк не получает секрет,
+    # черновик ревьюить рано.
+    if: >-
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.pull_request.user.login == github.repository_owner ||
+       github.event.pull_request.user.login == 'opencode-agent[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      statuses: read
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # ad-hoc установка aqua-бэкендом (GitHub Releases, без npm); версия
+      # закреплена здесь, чтобы mise install у разработчиков её не качал.
+      - name: Install OpenCode
+        id: install
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # jdx/mise-action v3
+        with:
+          install_args: aqua:anomalyco/opencode@2.2.5
+          cache_key_prefix: mise-review-v1
+
+      - name: Preflight
+        id: preflight
+        if: always()
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENCODE_API_KEY:-}" ]; then
+            echo "reason=infra" >> "$GITHUB_OUTPUT"
+            echo "detail=секрет OPENCODE_API_KEY не задан" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          if [ "${{ steps.install.outcome }}" != "success" ]; then
+            echo "reason=infra" >> "$GITHUB_OUTPUT"
+            echo "detail=не удалось установить opencode" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "reason=ok" >> "$GITHUB_OUTPUT"
+
+      # Собираем всё, что ревьюеру нужно по ссылкам PR: спецификацию,
+      # согласование, прошлые замечания и CI. Модель не ходит в сеть и не
+      # выполняет команды, поэтому недоверенный текст PR не становится
+      # инструкцией для shell.
+      - name: Build review context
+        if: steps.preflight.outputs.reason == 'ok'
+        run: |
+          set -uo pipefail
+          input="$RUNNER_TEMP/review-input"
+          context="$RUNNER_TEMP/review-context.md"
+          mkdir -p "$input"
+
+          git fetch --no-tags origin "$BASE_SHA" || true
+          for file in REVIEW.md AGENTS.md CODING_STANDARDS.md; do
+            if git show "$BASE_SHA:$file" > "$input/$file" 2>/dev/null; then
+              :
+            else
+              echo "НЕДОСТУПНО: $file из базового SHA $BASE_SHA" > "$input/$file"
+            fi
+          done
+
+          {
+            echo "# PR"
+            gh pr view "$PR_NUMBER" --json number,title,body,author,baseRefName,headRefName,headRefOid,createdAt,isDraft,state,url
+            echo
+            echo "# Diff"
+            gh pr diff "$PR_NUMBER" || echo "НЕДОСТУПНО: diff"
+            echo
+            echo "# Checks"
+            gh pr checks "$PR_NUMBER" || true
+            echo
+            echo "# Conversation"
+            gh pr view "$PR_NUMBER" --comments || true
+            echo
+            echo "# Inline review comments"
+            gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate \
+              --jq '.[] | {path,line,original_line,body,user:.user.login,created_at,in_reply_to_id}' \
+              2>/dev/null || echo "НЕДОСТУПНО: inline comments"
+            echo
+            echo "# Reviews"
+            gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate \
+              --jq '.[] | {state,body,user:.user.login,submitted_at}' \
+              2>/dev/null || echo "НЕДОСТУПНО: reviews"
+            echo
+            echo "# Linked issues"
+            body=$(gh pr view "$PR_NUMBER" --json body --jq .body)
+            numbers=$(printf '%s' "$body" | grep -Eo '#[0-9]+' | tr -d '#' | sort -u | head -10)
+            if [ -z "$numbers" ]; then
+              echo "НЕДОСТУПНО: в описании PR нет ссылок на issue"
+            fi
+            for number in $numbers; do
+              if [ "$number" = "$PR_NUMBER" ]; then
+                continue
+              fi
+              echo "## Issue #$number"
+              if gh issue view "$number" --json number,title,state,labels,body,comments >/dev/null 2>&1; then
+                gh issue view "$number" --json number,title,state,labels,body,comments
+              else
+                echo "НЕДОСТУПНО: issue #$number не читается (нет доступа или это PR)"
+              fi
+              echo
+            done
+          } > "$context"
+
+          cat > "$RUNNER_TEMP/review-prompt.md" <<'PROMPT'
+          Ты — независимый ревьюер PR. Не меняй файлы, не создавай коммиты, не
+          одобряй и не сливай PR. Твои входные данные: файлы PR в рабочем каталоге,
+          review-context.md (diff, тело PR, комментарии, связанные issue, CI),
+          REVIEW.md из базовой ветки, AGENTS.md и CODING_STANDARDS.md.
+
+          Проверь diff против согласованной спецификации и REVIEW.md. Найди в
+          контексте ссылки на исходное обращение, спецификацию и согласование
+          человеком; если ссылка недоступна, согласования нет или изменение
+          выходит за согласованный объём — отрази это как пробел в summary, а не
+          как дефект кода. Учти предыдущие замечания и ответы: не повторяй уже
+          разобранное без новых доказательств. Новые правки проверяй по
+          затронутому поведению. Форматирование проверяет линтер — не включай его
+          в замечания. Не выдумывай замечания: если подтверждённых дефектов нет,
+          прямо напиши «Замечаний нет».
+
+          Каждое замечание должно содержать файл, строку, условия ошибки и
+          последствие. Строка — номер изменённой строки на правой стороне diff.
+          Верни ТОЛЬКО JSON без Markdown и без code fence:
+          {"summary":"...markdown...","findings":[{"path":"...","line":123,"body":"..."}]}
+          PROMPT
+
+      - name: Review with OpenCode
+        id: agent
+        if: steps.preflight.outputs.reason == 'ok'
+        continue-on-error: true
+        timeout-minutes: 12
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          # OPENCODE_PERMISSION в 2.2.5 не поддерживается: запреты задаются
+          # inline-конфигом. Ревьюеру разрешены только чтение, glob и grep.
+          OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny"},"glob":"allow","grep":"allow","external_directory":"deny","doom_loop":"deny"},"agent":{"plan":{"permission":{"bash":"deny","edit":"deny","webfetch":"deny","websearch":"deny","task":"deny"}}}}'
+        run: |
+          set +e
+          start=$(date +%s)
+          timeout -k 10s 600s mise exec aqua:anomalyco/opencode@2.2.5 -- \
+            opencode run --print-logs --log-level info \
+            --model opencode/deepseek-v4.1-flash-free \
+            --agent plan \
+            --format json \
+            --file "$RUNNER_TEMP/review-input/REVIEW.md" \
+            --file "$RUNNER_TEMP/review-input/AGENTS.md" \
+            --file "$RUNNER_TEMP/review-input/CODING_STANDARDS.md" \
+            --file "$RUNNER_TEMP/review-context.md" \
+            "$(cat "$RUNNER_TEMP/review-prompt.md")" \
+            > "$RUNNER_TEMP/opencode-review.jsonl" 2> "$RUNNER_TEMP/opencode-review.log"
+          rc=$?
+          echo "$rc" > "$RUNNER_TEMP/agent.rc"
+          echo "$(( $(date +%s) - start ))" > "$RUNNER_TEMP/agent.elapsed"
+          cat "$RUNNER_TEMP/opencode-review.log" >&2
+          if [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+          jq -sr 'map(select(.type == "text") | .part.text) | last // empty' \
+            "$RUNNER_TEMP/opencode-review.jsonl" > "$RUNNER_TEMP/review.raw"
+          test -s "$RUNNER_TEMP/review.raw"
+
+      - name: Publish review
+        id: publish
+        if: steps.preflight.outputs.reason == 'ok' && steps.agent.outcome == 'success'
+        run: |
+          set -euo pipefail
+          raw="$RUNNER_TEMP/review.raw"
+          json="$RUNNER_TEMP/review.json"
+          if ! jq -e . "$raw" > "$json" 2>/dev/null; then
+            perl -0777 -ne 'if (/(\{.*\})/s) { print $1 }' "$raw" > "$json" || true
+          fi
+          if ! jq -e 'has("summary") and (.findings | type == "array")' "$json" >/dev/null 2>&1; then
+            echo "НЕВАЛИДНЫЙ_JSON" > "$RUNNER_TEMP/review.invalid"
+            exit 1
+          fi
+
+          summary=$(jq -r '.summary' "$json")
+          findings=$(jq '.findings | length' "$json")
+          if [ "$findings" -eq 0 ] && ! printf '%s' "$summary" | grep -qi 'замечаний нет'; then
+            summary="$summary"$'\n\n'"Замечаний нет."
+          fi
+          body=$(printf '<!-- opencode-review:%s -->\n## Авторевью %s\n\n%s\n\n---\nПрогон: %s' \
+            "$HEAD_SHA" "$HEAD_SHA" "$summary" "$RUN_URL")
+          gh pr comment "$PR_NUMBER" --body "$body"
+
+          jq -c '.findings[]?' "$json" | while IFS= read -r finding; do
+            path=$(jq -r '.path // empty' <<<"$finding")
+            line=$(jq -r '.line // empty' <<<"$finding")
+            fbody=$(jq -r '.body // empty' <<<"$finding")
+            if [ -z "$path" ] || [ -z "$line" ] || [ -z "$fbody" ]; then
+              continue
+            fi
+            if gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/comments" \
+              -f body="$fbody" \
+              -f commit_id="$HEAD_SHA" \
+              -f path="$path" \
+              -F line="$line" \
+              -f side=RIGHT >/dev/null 2>&1; then
+              :
+            else
+              gh pr comment "$PR_NUMBER" --body "**Замечание вне diff ($path:$line):** $fbody" || true
+            fi
+          done
+
+      # Итог при сбое публикует отдельный шаг без модели: причина, SHA и логи.
+      - name: Publish failure status
+        if: always()
+        run: |
+          set -uo pipefail
+          reason=""
+          if [ "${{ steps.preflight.outputs.reason }}" = "infra" ]; then
+            reason=infra
+          fi
+          if [ "${{ steps.install.outcome }}" = "failure" ]; then
+            reason=infra
+          fi
+          if [ "${{ steps.agent.outcome }}" = "failure" ]; then
+            rc=$(cat "$RUNNER_TEMP/agent.rc" 2>/dev/null || echo "")
+            elapsed=$(cat "$RUNNER_TEMP/agent.elapsed" 2>/dev/null || echo 0)
+            if [ "$rc" = "124" ] || [ "${elapsed:-0}" -ge 700 ]; then
+              reason=timeout
+            else
+              reason=agent_failed
+            fi
+          fi
+          if [ "${{ steps.publish.outcome }}" = "failure" ]; then
+            reason=agent_failed
+          fi
+          if [ -z "$reason" ] || [ "$reason" = "ok" ]; then
+            exit 0
+          fi
+          gh pr comment "$PR_NUMBER" --body "$(printf '**Авторевью не завершилось.**\n\n- Причина: %s\n- Последний SHA: %s\n- Логи: %s\n- Статус: **нужен человек** — проверьте логи и решите, повторять ли ревью.' "$reason" "$HEAD_SHA" "$RUN_URL")"
