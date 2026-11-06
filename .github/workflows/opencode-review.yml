@@ -212,7 +212,33 @@ jobs:
           fi
           jq -sr 'map(select(.type == "text") | .part.text) | last // empty' \
             "$RUNNER_TEMP/opencode-review.jsonl" > "$RUNNER_TEMP/review.raw"
-          test -s "$RUNNER_TEMP/review.raw"
+          test -s "$RUNNER_TEMP/review.raw" || {
+            echo "Модель не вернула текст. События:"
+            jq -r '.type' "$RUNNER_TEMP/opencode-review.jsonl" | sort | uniq -c || true
+            exit 1
+          }
+
+      # Отладка ревью: события модели и лог нужны, если прогон упал до
+      # публикации. Артефакт живёт 14 дней и не содержит секретов.
+      - name: Save review debug
+        if: always()
+        run: |
+          set -uo pipefail
+          mkdir -p review-debug
+          for file in opencode-review.jsonl opencode-review.log review.raw; do
+            if [ -f "$RUNNER_TEMP/$file" ]; then
+              cp "$RUNNER_TEMP/$file" "review-debug/$file"
+            fi
+          done
+
+      - name: Upload review debug
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # actions/upload-artifact v7.0.2
+        with:
+          name: review-debug-${{ github.run_id }}
+          path: review-debug/
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Publish review
         id: publish
