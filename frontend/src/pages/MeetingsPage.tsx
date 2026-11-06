@@ -23,7 +23,7 @@ export function MeetingsPage() {
       ) : bookings.length === 0 ? (
         <p className="text-muted-foreground">Предстоящих встреч пока нет</p>
       ) : (
-        <ul aria-label="Предстоящие встречи" className="grid gap-2">
+        <ul aria-label="Предстоящие встречи" className="grid grid-cols-2 gap-2">
           {bookings.map((booking) => {
             const minutes = Math.round(
               (Date.parse(booking.end) - Date.parse(booking.start)) / 60_000,

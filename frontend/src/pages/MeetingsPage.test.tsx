@@ -69,6 +69,50 @@ describe('MeetingsPage', () => {
     expect(screen.getByText(/Europe\/Moscow/)).toBeTruthy()
   })
 
+  it('links the guest email as a blue mailto link', async () => {
+    vi.mocked(fetchBookings).mockResolvedValue([
+      {
+        id: 'booking-1',
+        eventTypeId: 'intro-call',
+        eventTypeTitle: 'Знакомство',
+        start: '2026-10-28T09:00:00+03:00',
+        end: '2026-10-28T09:30:00+03:00',
+        guestName: 'Гость',
+        guestEmail: 'guest@example.com',
+        topic: 'Перезвоните',
+        createdAt: '2026-10-27T10:00:00+00:00',
+      },
+    ])
+
+    renderPage()
+
+    const link = await screen.findByRole('link', { name: 'guest@example.com' })
+    expect(link.getAttribute('href')).toBe('mailto:guest@example.com')
+    expect(link.className).toContain('text-blue-600')
+  })
+
+  it('uses one column on small screens and two on wide ones', async () => {
+    vi.mocked(fetchBookings).mockResolvedValue([
+      {
+        id: 'booking-1',
+        eventTypeId: 'intro-call',
+        eventTypeTitle: 'Знакомство',
+        start: '2026-10-28T09:00:00+03:00',
+        end: '2026-10-28T09:30:00+03:00',
+        guestName: 'Гость',
+        guestEmail: 'guest@example.com',
+        topic: 'Перезвоните',
+        createdAt: '2026-10-27T10:00:00+00:00',
+      },
+    ])
+
+    renderPage()
+
+    const list = await screen.findByRole('list', { name: 'Предстоящие встречи' })
+    expect(list.className).toContain('grid-cols-1')
+    expect(list.className).toContain('md:grid-cols-2')
+  })
+
   it('shows an empty state without upcoming meetings', async () => {
     vi.mocked(fetchBookings).mockResolvedValue([])
 
