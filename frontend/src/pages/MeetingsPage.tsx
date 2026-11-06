@@ -42,7 +42,13 @@ export function MeetingsPage() {
                   {minutes} мин)
                 </p>
                 <p className="text-muted-foreground">
-                  {booking.guestName} — {booking.guestEmail}
+                  {booking.guestName} —{' '}
+                  <a
+                    href={`mailto:${booking.guestEmail}`}
+                    className="text-blue-600"
+                  >
+                    {booking.guestEmail}
+                  </a>
                   {booking.comment ? ` — ${booking.comment}` : ''}
                 </p>
                 <p className="text-muted-foreground">
