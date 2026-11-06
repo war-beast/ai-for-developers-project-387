@@ -208,8 +208,8 @@ jobs:
                 "${HEAD_SHA:-неизвестен}" "$RUN_URL")
               ;;
           esac
-          # gh issue comment работает и для PR: комментарий один и тот же
-          # ресурс, а проверенный в авторевью путь не упирается в права REST.
+          # Права на комментарий в PR даёт pull-requests: write; gh issue
+          # comment работает и для PR — это тот же ресурс, что и в авторевью.
           gh issue comment "$NUMBER" --repo "$REPO" --body "$text" >/dev/null
           # Лейбл может отсутствовать в свежем репозитории: создаём идемпотентно.
           gh label create ready-for-human \
