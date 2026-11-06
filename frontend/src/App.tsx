@@ -1,11 +1,13 @@
 import { Route, Routes } from 'react-router'
 
+import { SiteFooter } from '@/components/site-footer'
 import { SiteHeader } from '@/components/site-header'
 import { AdminPage } from '@/pages/AdminPage'
 import { BookPage } from '@/pages/BookPage'
 import { EventTypePage } from '@/pages/EventTypePage'
 import { HomePage } from '@/pages/HomePage'
 import { MeetingsPage } from '@/pages/MeetingsPage'
+import { PrivacyPage } from '@/pages/PrivacyPage'
 
 export default function App() {
   return (
@@ -17,7 +19,9 @@ export default function App() {
         <Route path="/book/:typeId" element={<EventTypePage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/admin/meetings" element={<MeetingsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
       </Routes>
+      <SiteFooter />
     </div>
   )
 }
