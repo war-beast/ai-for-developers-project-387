@@ -93,11 +93,11 @@ mise run e2e
   Комментарий из одной команды (`/oc`) — резюме треда.
   В комментарии к коду в Files-табе PR агент дополнительно получает файл и
   строки ревью.
-- **Модель**: `opencode/glm-5.3-flash-free` (провайдер `opencode`),
-  ключ — `OPENCODE_API_KEY` в GitHub Secrets (Settings → Secrets and
-  variables → Actions); мелкие задачи апстрим берёт из `small_model` в
-  `opencode.json` — той же бесплатной моделью, чтобы заголовок сессии не
-  уходил в платный тариф.
+- **Модель**: `anymodel/ds/deepseek-v4-flash` (провайдер `anymodel`,
+  OpenAI-совместимый шлюз из `opencode.json`), ключ — `OPENCODE_API_KEY`
+  в GitHub Secrets (Settings → Secrets и variables → Actions); мелкие задачи
+  апстрим берёт из `small_model` — `anymodel/am/free`, чтобы заголовок сессии
+  не уходил в платный тариф.
 - **Права запуска**: только доверенные участники (автор комментария —
   OWNER/MEMBER/COLLABORATOR); команды ботов и комментарии на PR из
   недоверенных fork игнорируются — fork-код не выполняется с секретом.
