@@ -26,17 +26,23 @@ jobs:
           REPO: ${{ github.repository }}
           BODY: ${{ github.event.pull_request.body }}
           BASE: ${{ github.event.pull_request.base.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
-          # Release PR генерирует release-please: он не закрывает issue, релиз
-          # ведёт автоматика. Закрывающая ссылка требуется только от ручных PR.
-          case "$HEAD_REF" in
-            release-please--*)
-              echo "Release PR release-please: ссылка на issue не требуется."
-              exit 0
-              ;;
-          esac
+          # Release PR генерирует release-please из этого же репозитория; имя
+          # ветки из форка подконтрольно автору PR, поэтому исключение
+          # ограничено не только префиксом ветки, но и её репозиторием.
+          if [ "$HEAD_REPO" = "$REPO" ]; then
+            case "$HEAD_REF" in
+              release-please--*)
+                msg="Release PR release-please: ссылка на issue не требуется."
+                echo "$msg"
+                echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+                ;;
+            esac
+          fi
           if [ "$BASE" = "dev" ]; then
             pattern='(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]+#[0-9]+'
             hint="PR в dev должен закрывать issue: добавьте в описание 'Closes #12'."
