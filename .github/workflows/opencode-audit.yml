@@ -1,0 +1,403 @@
+name: opencode-audit
+
+# Еженедельный Lighthouse-аудит опубликованного приложения. Workflow собирает
+# сырой отчёт Lighthouse, сохраняет его артефактом, а агент OpenCode разбирает
+# выжимку, публикует отчёт в issue и создаёт входящие задачи по находкам.
+#
+# Почему CLI, а не GitHub Action OpenCode: закреплённый в репозитории экшен
+# v1.19.5 умеет только issue_comment и pull_request_review_comment и не
+# запускается по schedule/workflow_dispatch. CLI получает GITHUB_TOKEN
+# (эквивалент use_github_token: true), поэтому id-token не нужен.
+on:
+  schedule:
+    # 03:00 UTC = 06:00 МСК, еженедельно в понедельник.
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "real — собрать Lighthouse; training — разобрать учебный отчёт"
+        type: choice
+        options: [real, training]
+        default: real
+      app_url:
+        description: "URL приложения для Lighthouse"
+        type: string
+        default: "https://callcalendar-615k.onrender.com"
+      training_report:
+        description: "Необязательный JSON учебного Lighthouse-отчёта (переопределяет fixture)"
+        type: string
+        default: ""
+
+# Параллельные аудиты не нужны: второй прогон ждёт первый, чтобы не плодить
+# одновременные комментарии и задачи по одному и тому же отчёту.
+concurrency:
+  group: opencode-audit
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      APP_URL: ${{ github.event.inputs.app_url || 'https://callcalendar-615k.onrender.com' }}
+      MODE: ${{ github.event.inputs.mode || 'real' }}
+      TRAINING_REPORT: ${{ github.event.inputs.training_report }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v7.0.1
+        with:
+          persist-credentials: false
+
+      # Отдельный шаг без модели: отсутствие ключа — причина `infra`, а не
+      # загадочный agent_failed внутри запуска opencode.
+      - name: Preflight - OPENCODE_API_KEY
+        id: preflight
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENCODE_API_KEY:-}" ]; then
+            echo "::error::Секрет OPENCODE_API_KEY не задан."
+            exit 1
+          fi
+
+      # ad-hoc установка aqua-бэкендом (GitHub Releases, без npm), версия
+      # закреплена здесь, чтобы mise install у разработчиков её не качал.
+      - name: Install OpenCode
+        id: install
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # jdx/mise-action v3
+        with:
+          install_args: aqua:anomalyco/opencode@2.2.6
+          cache_key_prefix: mise-audit-v1
+
+      - name: Prepare audit directory
+        id: prepare
+        run: |
+          set -euo pipefail
+          audit_dir="$RUNNER_TEMP/audit"
+          mkdir -p "$audit_dir"
+          echo "AUDIT_DIR=$audit_dir" >> "$GITHUB_ENV"
+          jq -n \
+            --arg event "$GITHUB_EVENT_NAME" \
+            --arg ref "$GITHUB_REF_NAME" \
+            --arg sha "$GITHUB_SHA" \
+            --arg appUrl "$APP_URL" \
+            --arg mode "$MODE" \
+            --arg runUrl "$RUN_URL" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$GITHUB_WORKFLOW" \
+            '{
+              event: $event,
+              ref: $ref,
+              sha: $sha,
+              appUrl: $appUrl,
+              mode: $mode,
+              runUrl: $runUrl,
+              runId: $runId,
+              repository: $repository,
+              workflow: $workflow
+            }' > "$audit_dir/audit-input.json"
+
+      - name: Ensure audit labels
+        id: labels
+        run: |
+          set -euo pipefail
+          gh label create "audit-report" \
+            --description "Lighthouse audit report thread" \
+            --color 0e8a16 --repo "$REPO" || true
+          gh label create "audit-finding" \
+            --description "Finding from the Lighthouse audit" \
+            --color fbca04 --repo "$REPO" || true
+          gh label create "training" \
+            --description "Training/demo issue, not a confirmed defect" \
+            --color c5def5 --repo "$REPO" || true
+          gh label create "needs-triage" \
+            --description "Maintainer needs to evaluate this issue" \
+            --color d93f0b --repo "$REPO" || true
+
+      - name: Ensure report issue
+        id: report
+        run: |
+          set -euo pipefail
+          cat > "$AUDIT_DIR/report-issue.md" <<'EOF'
+          Сюда workflow `opencode-audit` публикует отчёты Lighthouse.
+
+          Каждый прогон оставляет комментарий с маркером
+          `<!-- lighthouse-audit:<run_id> -->`. Задачи по находкам создаются
+          отдельно с метками `audit-finding` и `needs-triage`; учебные
+          прогоны помечаются `training`. Артефакт прогона хранится 14 дней,
+          поэтому итог и ссылки на задачи публикуются здесь.
+          EOF
+          number=$(gh issue list --repo "$REPO" --label audit-report --state open \
+            --limit 1 --json number --jq '.[0].number // empty')
+          if [ -z "$number" ]; then
+            url=$(gh issue create --repo "$REPO" \
+              --title "Аудит CallCalendar: отчёты Lighthouse" \
+              --label audit-report \
+              --body-file "$AUDIT_DIR/report-issue.md")
+            number=${url##*/}
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Locate Chrome
+        id: chrome
+        if: success() && env.MODE == 'real'
+        run: |
+          set -euo pipefail
+          for candidate in google-chrome-stable google-chrome chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              echo "path=$(command -v "$candidate")" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::error::Chrome не найден на runner; Lighthouse не сможет запуститься."
+          exit 1
+
+      - name: Warm up app
+        id: warmup
+        if: success() && env.MODE == 'real'
+        run: |
+          set -euo pipefail
+          health="${APP_URL%/}/health"
+          for attempt in $(seq 1 8); do
+            if curl -fsS --max-time 30 "$health" >/dev/null; then
+              echo "ready=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$attempt" -eq 8 ]; then
+              echo "::error::Приложение $APP_URL не ответило на /health за 8 попыток."
+              exit 1
+            fi
+            sleep 20
+          done
+
+      - name: Collect Lighthouse report
+        id: lighthouse
+        if: success() && env.MODE == 'real' && steps.warmup.outputs.ready == 'true'
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.path }}
+        run: |
+          set -euo pipefail
+          url="${APP_URL%/}/"
+          npx --yes lighthouse@13.6.0 "$url" \
+            --output=json --output=html \
+            --output-path="$AUDIT_DIR/lighthouse-report" \
+            --only-categories=performance,accessibility,best-practices,seo \
+            --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
+            --quiet
+          # Lighthouse с несколькими --output добавляет .report.json/.report.html.
+          ls -1 "$AUDIT_DIR"/lighthouse-report* >/dev/null
+
+      - name: Prepare training report
+        id: training
+        if: success() && env.MODE == 'training'
+        run: |
+          set -euo pipefail
+          if [ -n "${TRAINING_REPORT:-}" ]; then
+            printf '%s' "$TRAINING_REPORT" > "$AUDIT_DIR/lighthouse-report.json"
+          else
+            cp .github/audit/training-lighthouse.json "$AUDIT_DIR/lighthouse-report.json"
+          fi
+          jq -e . "$AUDIT_DIR/lighthouse-report.json" >/dev/null
+          {
+            printf '<!doctype html><meta charset="utf-8"><title>Учебный отчёт Lighthouse</title><pre>'
+            cat "$AUDIT_DIR/lighthouse-report.json"
+            printf '</pre>'
+          } > "$AUDIT_DIR/lighthouse-report.html"
+
+      - name: Summarize Lighthouse report
+        id: summarize
+        if: success()
+        run: |
+          set -euo pipefail
+          report=""
+          for candidate in "$AUDIT_DIR"/lighthouse-report*.json; do
+            [ -e "$candidate" ] || continue
+            report="$candidate"
+            break
+          done
+          if [ -z "$report" ]; then
+            echo "::error::Lighthouse не создал JSON-отчёт в $AUDIT_DIR."
+            exit 1
+          fi
+          jq -f .github/audit/summarize.jq "$report" > "$AUDIT_DIR/lighthouse-summary.json"
+          jq -e '.failingAudits | type == "array"' "$AUDIT_DIR/lighthouse-summary.json" >/dev/null
+
+      - name: Run opencode audit
+        id: agent
+        if: success() && (steps.lighthouse.outcome == 'success' || env.MODE == 'training')
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          # Редактирование файлов запрещено: аудитор только читает и публикует
+          # issues/комментарии. Bash нужен для gh и jq.
+          OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"allow","edit":"deny","write":"deny"}}'
+          AUDIT_REPORT_ISSUE: ${{ steps.report.outputs.number }}
+          AUDIT_RUN_ID: ${{ github.run_id }}
+          AUDIT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          AUDIT_SHA: ${{ github.sha }}
+          AUDIT_APP_URL: ${{ github.event.inputs.app_url || 'https://callcalendar-615k.onrender.com' }}
+          AUDIT_MODE: ${{ github.event.inputs.mode || 'real' }}
+          AUDIT_ARTIFACT: lighthouse-audit-${{ github.run_id }}
+        run: |
+          set +e
+          start=$(date +%s)
+          timeout -k 10s 780s mise exec aqua:anomalyco/opencode@2.2.6 -- \
+            opencode run --print-logs --log-level info \
+            --model anymodel/ds/deepseek-v4-flash \
+            --agent build \
+            --format json \
+            --file "$AUDIT_DIR/audit-input.json" \
+            --file "$AUDIT_DIR/lighthouse-summary.json" \
+            "$(cat .github/audit/prompt.md)" \
+            > "$AUDIT_DIR/opencode-audit.jsonl" 2> "$AUDIT_DIR/opencode-audit.log"
+          rc=$?
+          echo "$rc" > "$AUDIT_DIR/agent.rc"
+          echo "$(( $(date +%s) - start ))" > "$AUDIT_DIR/agent.elapsed"
+          cat "$AUDIT_DIR/opencode-audit.log" >&2
+          exit "$rc"
+
+      - name: Verify report comment
+        id: verify
+        if: success() && steps.agent.outcome == 'success'
+        env:
+          REPORT_ISSUE: ${{ steps.report.outputs.number }}
+        run: |
+          set -euo pipefail
+          if ! gh issue view "$REPORT_ISSUE" --repo "$REPO" \
+            --json comments --jq '.comments[].body' \
+            | grep -q "<!-- lighthouse-audit:${GITHUB_RUN_ID} -->"; then
+            echo "::error::Агент не опубликовал отчёт в issue #$REPORT_ISSUE."
+            exit 1
+          fi
+
+      - name: Save agent report
+        if: always()
+        run: |
+          set -uo pipefail
+          [ -n "${AUDIT_DIR:-}" ] || exit 0
+          if [ ! -s "$AUDIT_DIR/report.md" ] && [ -s "$AUDIT_DIR/opencode-audit.jsonl" ]; then
+            jq -sr 'map(select(.type == "text") | .part.text) | last // empty' \
+              "$AUDIT_DIR/opencode-audit.jsonl" > "$AUDIT_DIR/report.md" 2>/dev/null || true
+          fi
+
+      # Отчёты должны жить вне рабочего дерева. Если агент всё же создал файлы
+      # в репозитории, они не попадут в артефакт и не станут коммитом:
+      # прав на push у джобы нет, а рабочее дерево очищается.
+      - name: Guard worktree
+        if: always()
+        run: |
+          set -uo pipefail
+          [ -n "${AUDIT_DIR:-}" ] || exit 0
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain > "$AUDIT_DIR/git-status.txt"
+            git reset --hard HEAD >/dev/null 2>&1 || true
+            git clean -fd >/dev/null 2>&1 || true
+            echo "::warning::Агент изменил рабочее дерево; изменения сброшены, отчёты остаются в AUDIT_DIR."
+          fi
+
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # actions/upload-artifact v7.0.2
+        with:
+          name: lighthouse-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/audit/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish failure status
+        if: always()
+        env:
+          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          PREPARE_OUTCOME: ${{ steps.prepare.outcome }}
+          LABELS_OUTCOME: ${{ steps.labels.outcome }}
+          REPORT_OUTCOME: ${{ steps.report.outcome }}
+          CHROME_OUTCOME: ${{ steps.chrome.outcome }}
+          WARMUP_OUTCOME: ${{ steps.warmup.outcome }}
+          LIGHTHOUSE_OUTCOME: ${{ steps.lighthouse.outcome }}
+          TRAINING_OUTCOME: ${{ steps.training.outcome }}
+          SUMMARIZE_OUTCOME: ${{ steps.summarize.outcome }}
+          AGENT_OUTCOME: ${{ steps.agent.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          REPORT_ISSUE: ${{ steps.report.outputs.number }}
+        run: |
+          set -uo pipefail
+          reason=""
+          if [ "$PREFLIGHT_OUTCOME" = "failure" ] ||
+             [ "$INSTALL_OUTCOME" = "failure" ] ||
+             [ "$PREPARE_OUTCOME" = "failure" ] ||
+             [ "$LABELS_OUTCOME" = "failure" ] ||
+             [ "$REPORT_OUTCOME" = "failure" ] ||
+             [ "$CHROME_OUTCOME" = "failure" ]; then
+            reason=infra
+          fi
+          if [ "$WARMUP_OUTCOME" = "failure" ]; then
+            reason=lighthouse_unavailable
+          fi
+          if [ "$LIGHTHOUSE_OUTCOME" = "failure" ] ||
+             [ "$TRAINING_OUTCOME" = "failure" ] ||
+             [ "$SUMMARIZE_OUTCOME" = "failure" ]; then
+            reason=lighthouse_failed
+          fi
+          if [ "$AGENT_OUTCOME" = "failure" ]; then
+            rc=$(cat "${AUDIT_DIR:-/nonexistent}/agent.rc" 2>/dev/null || echo "")
+            elapsed=$(cat "${AUDIT_DIR:-/nonexistent}/agent.elapsed" 2>/dev/null || echo 0)
+            if [ "$rc" = "124" ] || [ "${elapsed:-0}" -ge 760 ]; then
+              reason=timeout
+            else
+              reason=agent_failed
+            fi
+          fi
+          if [ "$VERIFY_OUTCOME" = "failure" ]; then
+            reason=agent_failed
+          fi
+          if [ -z "$reason" ]; then
+            exit 0
+          fi
+          if [ -z "${REPORT_ISSUE:-}" ]; then
+            echo "::error::Отчётный issue не создан; причину смотрите в логах."
+            exit 1
+          fi
+          # Если агент успел опубликовать отчёт, второй комментарий не нужен.
+          if gh issue view "$REPORT_ISSUE" --repo "$REPO" --json comments \
+            --jq '.comments[].body' 2>/dev/null \
+            | grep -q "<!-- lighthouse-audit:${GITHUB_RUN_ID} -->"; then
+            echo "Отчёт уже опубликован; итоговый комментарий о сбое не нужен."
+            exit 1
+          fi
+          if [ "$MODE" = "training" ]; then
+            target="учебного отчёта"
+          else
+            target="$APP_URL"
+          fi
+          case "$reason" in
+            infra)
+              text="**Аудит не состоялся.** Причина: infra — не удалось подготовить окружение (OpenCode, каталог, лейблы или Chrome). Прогон: $RUN_URL"
+              ;;
+            lighthouse_unavailable)
+              text="**Аудит не состоялся.** Причина: lighthouse_unavailable — приложение $APP_URL не ответило на /health после прогрева. Прогон: $RUN_URL"
+              ;;
+            lighthouse_failed)
+              text="**Аудит не состоялся.** Причина: lighthouse_failed — Lighthouse не смог собрать или разобрать отчёт для $target. Прогон: $RUN_URL"
+              ;;
+            timeout)
+              text="**Аудит не завершился.** Причина: timeout — агент превысил отведённое время. Прогон: $RUN_URL"
+              ;;
+            *)
+              text="**Аудит не завершился.** Причина: agent_failed — агент завершился с ошибкой или не опубликовал отчёт. Прогон: $RUN_URL"
+              ;;
+          esac
+          gh issue comment "$REPORT_ISSUE" --repo "$REPO" --body "$text" >/dev/null
+          exit 1

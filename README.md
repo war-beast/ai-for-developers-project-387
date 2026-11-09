@@ -173,6 +173,66 @@ mise run e2e
 - **Сбой**: причина (`timeout`, `infra`, `agent_failed`), последний SHA и
   ссылка на логи публикуются отдельным шагом без модели.
 
+## Аудит Lighthouse по расписанию (workflow opencode-audit)
+
+Workflow `.github/workflows/opencode-audit.yml` собирает Lighthouse-отчёт
+опубликованного приложения, сохраняет сырые данные артефактом, а агент
+OpenCode разбирает отчёт и создаёт задачи по находкам.
+
+- **События**: `schedule` (понедельник 03:00 UTC = 06:00 МСК) и
+  `workflow_dispatch` с inputs `mode`, `app_url`, `training_report`.
+- **Что проверяется**: мобильный Lighthouse для `/` по `app_url` (по умолчанию
+  https://callcalendar-615k.onrender.com), категории `performance`,
+  `accessibility`, `best-practices`, `seo`. Перед запуском приложение
+  прогревается запросами к `/health`: бесплатный Render засыпает.
+- **Артефакт**: `lighthouse-audit-<run_id>` — сырой JSON/HTML, компактная
+  выжимка, `audit-input.json`, вывод агента и `report.md`; хранится 14 дней.
+  Итог и ссылки на задачи публикуются в issue, а не только в артефакте.
+  Отчёты лежат вне рабочего дерева (`$RUNNER_TEMP/audit`), локальные каталоги
+  `audit-reports/` и `.audit/` игнорируются и в коммиты не попадают.
+- **Отчёт**: issue «Аудит CallCalendar: отчёты Lighthouse» с меткой
+  `audit-report`; каждый прогон оставляет комментарий с маркером
+  `<!-- lighthouse-audit:<run_id> -->`.
+- **Задачи**: отдельный issue на находку с метками `audit-finding` и
+  `needs-triage`, заголовок `Lighthouse: ...`. Перед созданием агент ищет
+  существующую задачу по маркеру
+  `<!-- lighthouse-finding: <audit-id>@<url> -->` и не создаёт дубль; при
+  новых данных комментирует существующую. `ready-for-agent` не ставится:
+  решение о реализации принимает человек. За прогон — не больше трёх задач,
+  остальные находки перечисляются в отчёте.
+- **Учебный режим**: `mode=training` разбирает подготовленный
+  `.github/audit/training-lighthouse.json` (или переданный `training_report`).
+  Задача получает метку `training`, заголовок `[учебная находка]` и
+  дисклеймер: это демонстрация, а не подтверждённый дефект.
+- **Авторизация и права**: CLI `opencode run` + `GITHUB_TOKEN` (эквивалент
+  `use_github_token: true`), права `contents: read` и `issues: write`. Без
+  `id-token`, без прав на изменение кода и создание PR. GitHub Action OpenCode
+  v1.19.5 не поддерживает `schedule`/`workflow_dispatch`, поэтому используется
+  CLI.
+- **Ограничения**: `schedule` в GitHub best-effort; Render может не проснуться
+  за время прогрева; Lighthouse может дать разные scores; задачи от бота не
+  запускают `opencode-triage` — разбор инициирует человек.
+
+Ручной запуск:
+
+```bash
+gh workflow run opencode-audit.yml --ref dev -f mode=real
+gh workflow run opencode-audit.yml --ref dev -f mode=training
+```
+
+### Результаты запусков
+
+<!-- audit-results:start -->
+Результаты первого ручного запуска и учебного прогона добавляются после
+мержа workflow в `dev`.
+<!-- audit-results:end -->
+
+### Выводы о работе агента
+
+<!-- audit-conclusions:start -->
+Выводы добавляются после первого ручного запуска.
+<!-- audit-conclusions:end -->
+
 ## Бюджет запусков `/oc`
 
 На один PR/issue — 2 попытки вызова агента по `/oc`. Счёт ведётся по истории

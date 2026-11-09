@@ -39,7 +39,7 @@ run = [
   "pnpm --dir frontend typecheck",
   "pnpm --dir frontend lint",
   "typos",
-  "jactionlint .github/workflows/check.yml .github/workflows/render-deploy.yml .github/workflows/pr-issue.yml .github/workflows/opencode.yml .github/workflows/opencode-triage.yml .github/workflows/opencode-review.yml .github/workflows/release-please.yml",
+  "jactionlint .github/workflows/check.yml .github/workflows/render-deploy.yml .github/workflows/pr-issue.yml .github/workflows/opencode.yml .github/workflows/opencode-triage.yml .github/workflows/opencode-review.yml .github/workflows/opencode-audit.yml .github/workflows/release-please.yml",
 ]
 
 [tasks.openapi]
@@ -79,7 +79,7 @@ run = [
   "pnpm --dir frontend typecheck",
   "pnpm --dir frontend lint",
   "typos",
-  "jactionlint .github/workflows/check.yml .github/workflows/render-deploy.yml .github/workflows/pr-issue.yml .github/workflows/opencode.yml .github/workflows/opencode-triage.yml .github/workflows/opencode-review.yml .github/workflows/release-please.yml",
+  "jactionlint .github/workflows/check.yml .github/workflows/render-deploy.yml .github/workflows/pr-issue.yml .github/workflows/opencode.yml .github/workflows/opencode-triage.yml .github/workflows/opencode-review.yml .github/workflows/opencode-audit.yml .github/workflows/release-please.yml",
   "dotnet test",
   "pnpm --dir frontend test",
   "mise run smoke-backend",
