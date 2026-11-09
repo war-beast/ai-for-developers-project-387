@@ -1,0 +1,60 @@
+{
+  "__training__": true,
+  "trainingNote": "Учебный отчёт для демонстрации создания задачи. Не является результатом проверки реального приложения и не подтверждает дефект.",
+  "finalUrl": "https://example.invalid/training",
+  "fetchTime": "2026-11-09T03:00:00.000Z",
+  "categories": {
+    "performance": {
+      "id": "performance",
+      "title": "Performance",
+      "score": 1,
+      "auditRefs": []
+    },
+    "accessibility": {
+      "id": "accessibility",
+      "title": "Accessibility",
+      "score": 0.91,
+      "auditRefs": [
+        {
+          "id": "color-contrast",
+          "weight": 7,
+          "group": "a11y-color-contrast"
+        }
+      ]
+    },
+    "best-practices": {
+      "id": "best-practices",
+      "title": "Best Practices",
+      "score": 1,
+      "auditRefs": []
+    },
+    "seo": {
+      "id": "seo",
+      "title": "SEO",
+      "score": 1,
+      "auditRefs": []
+    }
+  },
+  "audits": {
+    "color-contrast": {
+      "id": "color-contrast",
+      "title": "Background and foreground colors do not have a sufficient contrast ratio.",
+      "description": "Low-contrast text is difficult or impossible for many users to read.",
+      "score": 0,
+      "scoreDisplayMode": "binary",
+      "displayValue": "",
+      "details": {
+        "items": [
+          {
+            "node": {
+              "selector": ".hero__subtitle",
+              "snippet": "<p class=\"hero__subtitle\">Запишитесь на звонок</p>"
+            },
+            "contrastRatio": "2.8",
+            "expectedContrastRatio": "4.5:1"
+          }
+        ]
+      }
+    }
+  }
+}

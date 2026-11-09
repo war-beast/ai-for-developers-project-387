@@ -11,6 +11,10 @@ dist/
 test-results/
 playwright-report/
 
+# Lighthouse-отчёты локальных запусков (workflow opencode-audit)
+audit-reports/
+.audit/
+
 # Environment & IDE
 .env
 .vs/
