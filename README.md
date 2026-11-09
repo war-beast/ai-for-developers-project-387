@@ -223,14 +223,43 @@ gh workflow run opencode-audit.yml --ref dev -f mode=training
 ### Результаты запусков
 
 <!-- audit-results:start -->
-Результаты первого ручного запуска и учебного прогона добавляются после
-мержа workflow в `dev`.
+Ручные прогоны после мержа workflow в `dev`:
+
+| Прогон | Режим | Итог | Задачи |
+| --- | --- | --- | --- |
+| [42627679197](https://github.com/war-beast/ai-for-developers-project-387/actions/runs/42627679197) | real | success; performance 0.90, accessibility 1.00, best-practices 1.00, seo 0.90 | [#46](https://github.com/war-beast/ai-for-developers-project-387/issues/46), [#47](https://github.com/war-beast/ai-for-developers-project-387/issues/47), [#48](https://github.com/war-beast/ai-for-developers-project-387/issues/48) |
+| [42629156435](https://github.com/war-beast/ai-for-developers-project-387/actions/runs/42629156435) | training | success; учебный отчёт | [#49](https://github.com/war-beast/ai-for-developers-project-387/issues/49) `training` |
+| [42630030861](https://github.com/war-beast/ai-for-developers-project-387/actions/runs/42630030861) | training, повтор | success; дубль не создан | уже есть #49 |
+
+- Отчётный issue: [#45](https://github.com/war-beast/ai-for-developers-project-387/issues/45).
+  Артефакт real-прогона `lighthouse-audit-42627679197` (сырой JSON/HTML,
+  выжимка, лог и вывод агента) хранится до 2026-11-23.
+- Реальные находки: `total-blocking-time` (score 0.67, 410 ms),
+  `meta-description` (score 0, meta-тега нет), `cache-insight` (score 0.5,
+  экономия ~162 KiB). Остальные четыре находки перечислены в отчёте без задач:
+  `max-potential-fid` пересекается с #46, `network-dependency-tree-insight` —
+  диагностика без самостоятельного действия, `render-blocking-insight` и
+  `unused-javascript` не вошли из-за лимита трёх задач.
+- Повторный учебный прогон не создал ни новой задачи, ни комментария: агент
+  нашёл #49 по маркеру `<!-- lighthouse-training: ... -->` и указал «уже есть
+  #49».
 <!-- audit-results:end -->
 
 ### Выводы о работе агента
 
 <!-- audit-conclusions:start -->
-Выводы добавляются после первого ручного запуска.
+- Агент отделил находки от диагностики: `max-potential-fid` и
+  `network-dependency-tree-insight` не стали задачами, а для
+  `render-blocking-insight` и `unused-javascript` явно указан лимит трёх задач.
+- Задачи пригодны для входящего разбора: есть audit id, score, displayValue,
+  селектор/ресурс, ссылка на отчёт и прогон; метки `audit-finding` и
+  `needs-triage` выставлены, `ready-for-agent` не поставлен.
+- Дедупликация работает: повторный учебный прогон не создал дубль и не добавил
+  комментарий к #49, а в отчёте сослался на существующую задачу.
+- Real-прогон занял около 7,5 минут работы агента (446 с). Отчёт зависит от
+  качества выжимки `summarize.jq`; `schedule` и холодный старт Render остаются
+  best-effort, а задачи от бота не запускают `opencode-triage` — разбор
+  начинает человек.
 <!-- audit-conclusions:end -->
 
 ## Бюджет запусков `/oc`
