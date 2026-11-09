@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/war-beast/ai-for-developers-project-387/compare/callcalendar-v1.3.1...callcalendar-v1.4.0) (2026-11-09)
+
+
+### Features
+
+* аудит Lighthouse по расписанию с задачами по находкам ([#42](https://github.com/war-beast/ai-for-developers-project-387/issues/42)) ([#43](https://github.com/war-beast/ai-for-developers-project-387/issues/43)) ([3658876](https://github.com/war-beast/ai-for-developers-project-387/commit/36588762b10d8e97842a4ae18bedf9a7d9553243))
+
 ## [1.3.1](https://github.com/war-beast/ai-for-developers-project-387/compare/callcalendar-v1.3.0...callcalendar-v1.3.1) (2026-11-06)
 
 
