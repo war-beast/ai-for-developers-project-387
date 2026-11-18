@@ -1,0 +1,95 @@
+name: "opencode"
+description: >
+  Запуск бота opencode в воркфлоу репозитория. Замена
+  anomalyco/opencode/github@810c0eb: апстрим-экшен ставит версию по тегу
+  latest, поэтому состав инструмента менялся между прогонами (сегодня 1.19.6,
+  завтра следующая 1.x). Здесь версия закреплена явно, а контракт inputs и
+  env повторяет апстрим - вызовы в воркфлоу не меняются.
+  Установка идёт aqua-бэкендом mise из GitHub Releases: без curl|bash и без
+  тега latest. Обновление версии - правка default у inputs.version.
+
+inputs:
+  model:
+    description: "Model to use"
+    required: true
+
+  agent:
+    description: "Agent to use. Must be a primary agent. Falls back to default_agent from config or 'build' if not found."
+    required: false
+
+  prompt:
+    description: "Custom prompt to override the default prompt"
+    required: false
+
+  use_github_token:
+    description: "Use GITHUB_TOKEN directly instead of the OpenCode App token exchange. When true, skips OIDC and uses the GITHUB_TOKEN env var."
+    required: false
+    default: "false"
+
+  mentions:
+    description: "Comma-separated list of trigger phrases (case-insensitive). Defaults to '/opencode,/oc'"
+    required: false
+
+  variant:
+    description: "Model variant for provider-specific reasoning effort (e.g., high, max, minimal)"
+    required: false
+
+  oidc_base_url:
+    description: "Base URL for the OIDC token exchange API. Defaults to https://api.opencode.ai"
+    required: false
+
+  version:
+    description: >
+      Версия CLI. Только линия 1.x: команду `opencode github run`, на которой
+      держится этот экшен, в 2.x убрали. 1.x при этом ещё выпускается, поэтому
+      обновление внутри линии безопасно.
+    required: false
+    default: "1.19.6"
+
+runs:
+  using: "composite"
+  steps:
+    # `opencode github run` есть только в линии 1.x: в 2.x команду github
+    # убрали. Без проверки промах версии выглядел бы как невнятное
+    # «unknown command» посреди лога агента.
+    - name: Check CLI version
+      shell: bash
+      env:
+        OPENCODE_VERSION: ${{ inputs.version }}
+      run: |
+        case "$OPENCODE_VERSION" in
+          1.*) ;;
+          *)
+            echo "::error::opencode $OPENCODE_VERSION не умеет github run: нужна линия 1.x"
+            exit 1
+            ;;
+        esac
+
+    # Ставим тот же способом, что и остальные прогоны opencode в репозитории
+    # (ревью, аудит): aqua тянет архив из GitHub Releases и проверяет, что
+    # скачано именно то, что просили, - в отличие от `curl | bash`.
+    - name: Install opencode
+      id: install
+      uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # jdx/mise-action v3
+      with:
+        install_args: aqua:anomalyco/opencode@${{ inputs.version }}
+        cache_key_prefix: mise-opencode-v1
+
+    # `opencode github run` читает конфигурацию из этих переменных и само
+    # поднимает `opencode serve`; остальное окружение (GH_TOKEN,
+    # OPENCODE_CONFIG_CONTENT, секреты провайдера) приходит из шага вызова.
+    - name: Run opencode
+      shell: bash
+      # Версия приходит через env, а не подстановкой в текст команды: input
+      # может задать вызывающий воркфлоу, а в inline-скрипте это была бы
+      # инъекция. Кавычки в скрипте закрывают остаток вопроса.
+      run: mise exec "aqua:anomalyco/opencode@$OPENCODE_VERSION" -- opencode github run
+      env:
+        OPENCODE_VERSION: ${{ inputs.version }}
+        MODEL: ${{ inputs.model }}
+        AGENT: ${{ inputs.agent }}
+        PROMPT: ${{ inputs.prompt }}
+        USE_GITHUB_TOKEN: ${{ inputs.use_github_token }}
+        MENTIONS: ${{ inputs.mentions }}
+        VARIANT: ${{ inputs.variant }}
+        OIDC_BASE_URL: ${{ inputs.oidc_base_url }}
