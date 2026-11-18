@@ -60,6 +60,12 @@ jobs:
       # в docs/adr/0004-pr-review-budget.md.
       BUDGET: 2
       BUDGET_PREFIX: "opencode budget v1 #${{ github.event.issue.number || github.event.pull_request.number || 'thread' }} ·"
+      # В CI некому отвечать на permission-запрос: любой ask превращается в
+      # ожидание до тайм-аута, неотличимое от долгой работы. В V1 пути вне
+      # проекта по умолчанию спрашиваются, поэтому запрещаем выход за
+      # workspace и зацикливание явно. env уровня job доходит и до дочернего
+      # `opencode serve`, который поднимает `opencode github run`.
+      OPENCODE_CONFIG_CONTENT: '{"permission":{"external_directory":"deny","doom_loop":"deny"}}'
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v7.0.1
@@ -136,7 +142,10 @@ jobs:
           steps.budget.outputs.exhausted == 'false'
         continue-on-error: true
         timeout-minutes: 30
-        uses: anomalyco/opencode/github@810c0eba1a7348036f8bdf61e6632d0c36c6876c # anomalyco/opencode v1.19.5
+        # Локальная обёртка вместо anomalyco/opencode/github@810c0eb: версия
+        # CLI закреплена (1.19.6) и ставится через mise/aqua, контракт
+        # inputs/env тот же.
+        uses: ./.github/actions/opencode
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }} # имя секрета зависит от провайдера в model
           # Токен для gh CLI: без него агент не может публиковать issue,
