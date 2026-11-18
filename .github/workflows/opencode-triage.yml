@@ -29,12 +29,15 @@ jobs:
     # ответам (у issue_comment). Фильтры:
     # - ботам нельзя: агент сам создаёт issue, и каждый созданный им issue
     #   породил бы новый триаж (цикл);
+    # - issues с лейблом no-triage пропускаются: их создаёт локальный агент
+    #   из клона, обращение уже согласовано человеком (mise run issue-create);
     # - продолжение (issue_comment) только по живым issues с needs-info,
     #   только от репортёра или доверенного участника; команды /oc и
     #   /opencode маршрутизирует workflow opencode - продолжение их
     #   не забирает.
     if: |
       github.event.issue.user.type != 'Bot' &&
+      !contains(github.event.issue.labels.*.name, 'no-triage') &&
       (github.event_name != 'issue_comment' ||
       (github.event.issue.pull_request == null &&
       github.event.issue.state == 'open' &&
@@ -66,6 +69,8 @@ jobs:
       # needs-info и ready-for-human в репозитории отсутствовали (в отличие
       # от остальных канонических лейблов из docs/agents/triage-labels.md):
       # создаём пропущенные перед каждым прогоном - самовосстановление.
+      # no-triage - служебный лейбл фильтра, ставится локальным агентом при
+      # создании issue (mise run issue-create).
       - name: Ensure triage labels
         env:
           GH_TOKEN: ${{ github.token }}
@@ -77,11 +82,32 @@ jobs:
           gh label create "ready-for-human" \
             --description "Requires human implementation" \
             --color 5319e7 --repo "$GITHUB_REPOSITORY" || true
+          gh label create "no-triage" \
+            --description "Created by a local agent, skip automatic triage" \
+            --color ededed --repo "$GITHUB_REPOSITORY" || true
+
+      # Лейбл из payload события может отставать от создания issue (лейбл
+      # добавлен вторым вызовом API). Здесь состояние читается из API, чтобы
+      # no-triage останавливал разбор при любом порядке событий.
+      - name: Skip issues opted out of triage
+        id: optout
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          number="${{ github.event.issue.number }}"
+          if gh api "repos/$GITHUB_REPOSITORY/issues/$number/labels" \
+            --jq '.[].name' | grep -qx "no-triage"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Issue #$number помечен no-triage: автотриаж пропущен." \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Run opencode triage
         # Локальная обёртка вместо anomalyco/opencode/github@810c0eb: версия
         # CLI закреплена (1.19.6) и ставится через mise/aqua, контракт
         # inputs/env тот же.
+        if: steps.optout.outputs.skip != 'true'
         uses: ./.github/actions/opencode
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }} # имя секрета зависит от провайдера в model
