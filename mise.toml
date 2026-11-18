@@ -64,6 +64,14 @@ run = [
 description = "Браузерный сценарий Playwright на реальных бекенде и Vite"
 run = "pnpm --dir frontend test:e2e"
 
+# Единственный путь создания issue от локального агента: лейбл no-triage
+# ставится в момент создания, поэтому автотриаж (workflow opencode-triage)
+# для такого issue не запускается. Аргументы дописываются к команде:
+# mise run issue-create --title "..." --body "..." [--parent N].
+[tasks.issue-create]
+description = "Создать issue от локального агента сразу с лейблом no-triage (без автотриажа)"
+run = "gh issue create --label no-triage"
+
 # Список "flat" и последовательный: dotnet format и dotnet test трогают одну
 # папку bin, поэтому check нельзя собирать из параллельных depends.
 [tasks.check]

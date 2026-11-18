@@ -12,4 +12,9 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
+Separate from the roles, `no-triage` is a service label: it marks issues
+created by a local agent (`mise run issue-create`, see
+[issue-tracker.md](./issue-tracker.md)) and makes workflow `opencode-triage`
+skip them. Don't use it to express a triage state.
+
 Edit the "Label in our tracker" column to match whatever vocabulary you actually use.
